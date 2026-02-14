@@ -56,7 +56,8 @@ namespace CM_Semi_Random_Research
         private Dictionary<TechLevel, float> techLevelHeaderProgress = new Dictionary<TechLevel, float>();
 
         // Check if anomaly exists and if the setting is enabled
-        private bool anomalyContentEnabled = (KnowledgeCategoryDefOf.Basic != null) && SemiRandomResearchMod.settings.experimentalAnomalySupport;
+        // Lambda to refresh setting based on settings toggle
+        private Func<bool> AnomalyContentEnabled = () => (KnowledgeCategoryDefOf.Basic != null) && SemiRandomResearchMod.settings.experimentalAnomalySupport;
 
         private bool ColonistsHaveResearchBench
         {
@@ -592,11 +593,11 @@ namespace CM_Semi_Random_Research
 
 
             // Get anomaly projects (for later use)
-            var anomalyProjectsBasic = anomalyContentEnabled ?
+            var anomalyProjectsBasic = AnomalyContentEnabled() ?
                 currentAvailableProjects.Where(p => p.knowledgeCategory == KnowledgeCategoryDefOf.Basic).ToList() :
                 new List<ResearchProjectDef>();
 
-            var anomalyProjectsAdvanced = anomalyContentEnabled ?
+            var anomalyProjectsAdvanced = AnomalyContentEnabled() ?
                 currentAvailableProjects.Where(p => p.knowledgeCategory == KnowledgeCategoryDefOf.Advanced).ToList() :
                 new List<ResearchProjectDef>();
 
@@ -748,7 +749,7 @@ namespace CM_Semi_Random_Research
             // Handle Anomaly Research Section - show at the bottom (if not on research graph screen)
             // OR after the graph when on research screen
             string anomaly_name;
-            if (anomalyContentEnabled && (hasAnomalyToShowBasic || hasAnomalyToShowAdvanced))
+            if (AnomalyContentEnabled() && (hasAnomalyToShowBasic || hasAnomalyToShowAdvanced))
             {
                 // Get anomaly research name from the research tab description.
                 // This allows us to support mods like ambiguous anomaly
@@ -770,10 +771,10 @@ namespace CM_Semi_Random_Research
                     GUI.color = Color.white;
                     currentY += gapHeight;
                 }
-                
+
             }
-            
-            if (anomalyContentEnabled && hasAnomalyToShowBasic)
+
+            if (AnomalyContentEnabled() && hasAnomalyToShowBasic)
             {
                 Text.Font = GameFont.Small;
                 Text.Anchor = TextAnchor.MiddleLeft;
@@ -794,7 +795,7 @@ namespace CM_Semi_Random_Research
                 }
             }
 
-            if (anomalyContentEnabled && hasAnomalyToShowAdvanced)
+            if (AnomalyContentEnabled() && hasAnomalyToShowAdvanced)
             {
                 if (hasActiveAnomalyResearchBasic)
                 {
@@ -856,10 +857,10 @@ namespace CM_Semi_Random_Research
                 Rect footerContainerRect = new Rect(
                     0f, 
                     position.height - totalFooterHeight, 
-                    position.width, 
+                    position.width,
                     totalFooterHeight
                 );
-                
+
                 // Draw a subtle separator line above the footer
                 GUI.color = new Color(0.4f, 0.4f, 0.4f, 0.6f);
                 Widgets.DrawLineHorizontal(footerContainerRect.x, footerContainerRect.y, footerContainerRect.width);
@@ -1071,10 +1072,10 @@ namespace CM_Semi_Random_Research
             
             // Apply fade effect to the entire GUI
             GUI.color = new Color(1f, 1f, 1f, animProgress);
-            
+
             float iconSize = 32.0f;
             float innerMargin = 4f;
-            float rightMargin = 8f;  
+            float rightMargin = 8f;
             float costValueWidth = Text.CalcSize(projectDef.CostApparent.ToString()).x + innerMargin * 2;
             float buttonHeight = 48f;
             float nameLeftPadding = 12f;
@@ -1128,13 +1129,13 @@ namespace CM_Semi_Random_Research
             Rect thirdSeparator = new Rect(
                 secondSeparator.x + (availableWidthAfterIcon * etaFieldPortion),
                 drawRect.y,
-                separatorWidth, 
+                separatorWidth,
                 buttonHeight
             );
 
             // Name rect
             Rect nameRect = new Rect(
-                firstSeparator.xMax + nameLeftPadding, 
+                firstSeparator.xMax + nameLeftPadding,
                 drawRect.y, 
                 secondSeparator.x - (firstSeparator.xMax + nameLeftPadding),
                 buttonHeight
@@ -1165,8 +1166,8 @@ namespace CM_Semi_Random_Research
                 : Color.Lerp(TexUI.AvailResearchColor, techColor, 0.3f); 
             
             // Border is brighter and more saturated on hover
-            Color borderColor = selectedProject == projectDef ? 
-                TexUI.HighlightBorderResearchColor : 
+            Color borderColor = selectedProject == projectDef ?
+                TexUI.HighlightBorderResearchColor :
                 (isMouseOver ? Color.Lerp(techColor, Color.white, 0.2f) : techColor);
             
             Color textColor = new Color(0.95f, 0.95f, 0.95f);
@@ -1264,8 +1265,8 @@ namespace CM_Semi_Random_Research
             // Draw vertical separator lines with proper alpha
             Widgets.DrawLine(
                 new Vector2(firstSeparator.x, firstSeparator.y), 
-                new Vector2(firstSeparator.x, firstSeparator.yMax), 
-                separatorColor, 
+                new Vector2(firstSeparator.x, firstSeparator.yMax),
+                separatorColor,
                 separatorWidth
             );
             
