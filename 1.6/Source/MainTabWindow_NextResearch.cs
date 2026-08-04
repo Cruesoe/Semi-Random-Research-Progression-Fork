@@ -1109,25 +1109,14 @@ namespace CM_Semi_Random_Research
                 buttonHeight
             );
 
-            // Calculate positions with a fixed percentage approach for 3 sections
-            float nameFieldPortion = 0.65f; // Reduced to make room for ETA
-            float etaFieldPortion = 0.20f;  // Add portion for ETA
-            // appears to be not used
-            // float costFieldPortion = 0.15f; // Cost takes the remaining portion
-            
+            // Calculate positions with a fixed percentage approach for 2 sections
+            float nameFieldPortion = 0.85f;
+
             float availableWidthAfterIcon = drawRect.width - (firstSeparator.xMax + nameLeftPadding);
-            
-            // Second separator position (after name, before ETA)
+
+            // Second separator position (after name, before cost)
             Rect secondSeparator = new Rect(
                 firstSeparator.xMax + nameLeftPadding + (availableWidthAfterIcon * nameFieldPortion),
-                drawRect.y,
-                separatorWidth, 
-                buttonHeight
-            );
-            
-            // Third separator position (after ETA, before cost)
-            Rect thirdSeparator = new Rect(
-                secondSeparator.x + (availableWidthAfterIcon * etaFieldPortion),
                 drawRect.y,
                 separatorWidth,
                 buttonHeight
@@ -1136,24 +1125,16 @@ namespace CM_Semi_Random_Research
             // Name rect
             Rect nameRect = new Rect(
                 firstSeparator.xMax + nameLeftPadding,
-                drawRect.y, 
+                drawRect.y,
                 secondSeparator.x - (firstSeparator.xMax + nameLeftPadding),
-                buttonHeight
-            );
-            
-            // ETA rect
-            Rect etaRect = new Rect(
-                secondSeparator.xMax + innerMargin,
-                drawRect.y, 
-                thirdSeparator.x - secondSeparator.xMax - innerMargin * 2,
                 buttonHeight
             );
 
             // Cost rect
             Rect costRect = new Rect(
-                thirdSeparator.xMax + costSeparatorPadding,
-                drawRect.y, 
-                drawRect.xMax - thirdSeparator.xMax - costSeparatorPadding - innerMargin,
+                secondSeparator.xMax + costSeparatorPadding,
+                drawRect.y,
+                drawRect.xMax - secondSeparator.xMax - costSeparatorPadding - innerMargin,
                 buttonHeight
             );
 
@@ -1235,7 +1216,33 @@ namespace CM_Semi_Random_Research
                 glowColor.a = 0.1f * animProgress;
                 Widgets.DrawBoxSolid(drawRect.ExpandedBy(2f), glowColor);
             }
-            
+
+            // Draw progress bar for smaller cards
+                        float progressFraction = 0f;
+            if (projectDef.CostApparent > 0f)
+            {
+
+                float currentProg = projectDef.ProgressApparent;
+                if (currentProg <= 0f)
+                {
+                    currentProg = Find.ResearchManager.GetProgress(projectDef);
+                }
+
+                if (currentProg > 0f)
+                {
+                    progressFraction = Mathf.Clamp01(currentProg / projectDef.CostApparent);
+                }
+            }
+
+            if (progressFraction > 0f)
+            {
+                Rect progressRect = new Rect(drawRect.x, drawRect.y, drawRect.width * progressFraction, drawRect.height);
+                Color progressColor = techColor;
+                progressColor.a = (isActive ? 0.6f : 0.4f) * animProgress;
+                Widgets.DrawBoxSolid(progressRect, progressColor);
+            }
+
+
             // Ensure border color has correct alpha
             borderColor.a *= animProgress;
             
@@ -1277,12 +1284,12 @@ namespace CM_Semi_Random_Research
                 separatorWidth
             );
             
-            Widgets.DrawLine(
-                new Vector2(thirdSeparator.x, thirdSeparator.y), 
-                new Vector2(thirdSeparator.x, thirdSeparator.yMax), 
-                separatorColor, 
-                separatorWidth
-            );
+            //Widgets.DrawLine(
+            //    new Vector2(thirdSeparator.x, thirdSeparator.y), 
+            //    new Vector2(thirdSeparator.x, thirdSeparator.yMax), 
+            //    separatorColor, 
+            //    separatorWidth
+            //);
             
             // Draw text elements
             Color usedTextColor = isActive ? ActiveProjectLabelColor : textColor;
@@ -1299,56 +1306,62 @@ namespace CM_Semi_Random_Research
             Text.Anchor = TextAnchor.MiddleLeft;
             Widgets.Label(nameRect, projectDef.LabelCap);
             
-            // Draw estimated time if we have global data
-            if (hasGlobalRateData)
-            {
-                // Calculate ETA
-                float remainingWork = projectDef.CostApparent - projectDef.ProgressApparent;
-                float estimatedDays = remainingWork / globalAverageRate;
-                string etaText = ResearchRateTracker.FormatETA(estimatedDays);
+            //// Draw estimated time if we have global data
+            //if (hasGlobalRateData)
+            //{
+            //    // Calculate ETA
+            //    float remainingWork = projectDef.CostApparent - projectDef.ProgressApparent;
+            //    float estimatedDays = remainingWork / globalAverageRate;
+            //    string etaText = ResearchRateTracker.FormatETA(estimatedDays);
                 
-                // Set color based on estimated days (similar to the stats section)
-                Color etaColor = new Color(0.7f, 0.7f, 0.7f, usedTextColor.a); // Default gray
+            //    // Set color based on estimated days (similar to the stats section)
+            //    Color etaColor = new Color(0.7f, 0.7f, 0.7f, usedTextColor.a); // Default gray
                 
-                if (estimatedDays >= 0)
-                {
-                    if (estimatedDays < 1f)
-                        etaColor = new Color(0.0f, 0.7f, 0.0f, usedTextColor.a); // Desaturated green
-                    else if (estimatedDays < 3f)
-                        etaColor = new Color(0.7f, 0.7f, 0.0f, usedTextColor.a); // Desaturated yellow
-                    else if (estimatedDays > 10f)
-                        etaColor = new Color(0.75f, 0.5f, 0.3f, usedTextColor.a); // Desaturated orange
-                }
+            //    if (estimatedDays >= 0)
+            //    {
+            //        if (estimatedDays < 1f)
+            //            etaColor = new Color(0.0f, 0.7f, 0.0f, usedTextColor.a); // Desaturated green
+            //        else if (estimatedDays < 3f)
+            //            etaColor = new Color(0.7f, 0.7f, 0.0f, usedTextColor.a); // Desaturated yellow
+            //        else if (estimatedDays > 10f)
+            //            etaColor = new Color(0.75f, 0.5f, 0.3f, usedTextColor.a); // Desaturated orange
+            //    }
                 
-                // Draw ETA with appropriate color
-                GUI.color = etaColor;
+            //    // Draw ETA with appropriate color
+            //    GUI.color = etaColor;
                 
-                // Add explicit centering calculation
-                float textWidth = Text.CalcSize(etaText).x;
-                float centerX = etaRect.x + (etaRect.width - textWidth) / 2;
-                Rect centeredEtaRect = new Rect(centerX, etaRect.y, textWidth, etaRect.height);
+            //    // Add explicit centering calculation
+            //    float textWidth = Text.CalcSize(etaText).x;
+            //    float centerX = etaRect.x + (etaRect.width - textWidth) / 2;
+            //    Rect centeredEtaRect = new Rect(centerX, etaRect.y, textWidth, etaRect.height);
                 
-                Widgets.Label(centeredEtaRect, etaText);
-                }
-                else
-                {
-                // No rate data available, show "N/A days" with explicit centering
-                GUI.color = new Color(0.5f, 0.5f, 0.5f, usedTextColor.a); // Muted gray
+            //    Widgets.Label(centeredEtaRect, etaText);
+            //    }
+            //    else
+            //    {
+            //    // No rate data available, show "N/A days" with explicit centering
+            //    GUI.color = new Color(0.5f, 0.5f, 0.5f, usedTextColor.a); // Muted gray
                 
-                string naText = "N/A days";
-                float textWidth = Text.CalcSize(naText).x;
-                float centerX = etaRect.x + (etaRect.width - textWidth) / 2;
-                Rect centeredNaRect = new Rect(centerX, etaRect.y, textWidth, etaRect.height);
+            //    string naText = "N/A days";
+            //    float textWidth = Text.CalcSize(naText).x;
+            //    float centerX = etaRect.x + (etaRect.width - textWidth) / 2;
+            //    Rect centeredNaRect = new Rect(centerX, etaRect.y, textWidth, etaRect.height);
                 
-                Widgets.Label(centeredNaRect, naText);
-            }
+            //    Widgets.Label(centeredNaRect, naText);
+            //}
             
             // Reset color
             GUI.color = originalColor;
             
             // Draw cost with proper centering
             Text.Anchor = TextAnchor.MiddleCenter; // Changed from MiddleRight to MiddleCenter
-            Widgets.Label(costRect, projectDef.CostApparent.ToString());
+           
+            // Format to show Progress/Total only if the project has been started
+            string costText = projectDef.ProgressApparent > 0
+                ? $"{projectDef.ProgressApparent:F0}/{projectDef.CostApparent:F0}"
+                : projectDef.CostApparent.ToString();
+
+            Widgets.Label(costRect, costText);
 
             // Handle mouse click - only if mostly visible
             if (animProgress >= 0.7f && Widgets.ButtonInvisible(drawRect))
@@ -2188,7 +2201,7 @@ namespace CM_Semi_Random_Research
             );
             
             // Second separator position - calculate with fixed percentage approach
-            float nameFieldPortion = 0.80f;
+            float nameFieldPortion = 0.75f;
             float availableWidthAfterIcon = headerRect.width - (firstSeparator.xMax + nameLeftPadding);
             Rect secondSeparator = new Rect(
                 firstSeparator.xMax + nameLeftPadding + (availableWidthAfterIcon * nameFieldPortion),
@@ -2267,7 +2280,7 @@ namespace CM_Semi_Random_Research
             Text.Anchor = TextAnchor.MiddleCenter;
             GUI.color = new Color(1f, 1f, 1f, 0.8f);
             string progressText = $"{project.ProgressApparent:F0}/{project.CostApparent:F0}";
-            float progressTextWidth = Text.CalcSize(progressText).x;
+            float progressTextWidth = Text.CalcSize(progressText).x + 16f;
 
             // Center within the entire right portion of the header, not just the cost rect
             float availableRightSideWidth = headerRect.width - secondSeparator.x;
@@ -2315,7 +2328,7 @@ namespace CM_Semi_Random_Research
             // Value with explicit centering
             GUI.color = new Color(0.65f, 0.8f, 0.9f); // Desaturated blue
             string currentRateText = hasRateData ? rateInfo.CurrentRateFormatted.Replace(" research/day", "/d") : "Calculating...";
-            float currentTextWidth = Text.CalcSize(currentRateText).x + 10f;
+            float currentTextWidth = Text.CalcSize(currentRateText).x + 8f;
             float currentCenterX = currentRateRect.x + (currentRateRect.width - currentTextWidth) / 2;
             Rect centeredCurrentRect = new Rect(currentCenterX, currentRateRect.y + statsLineHeight/2, currentTextWidth, statsLineHeight/2);
             Widgets.Label(centeredCurrentRect, currentRateText);
