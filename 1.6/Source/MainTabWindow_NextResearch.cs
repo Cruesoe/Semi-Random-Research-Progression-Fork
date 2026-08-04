@@ -2275,10 +2275,16 @@ namespace CM_Semi_Random_Research
             Rect centeredProgressRect = new Rect(progressCenterX, costRect.y, progressTextWidth, costRect.height);
             Widgets.Label(centeredProgressRect, progressText);
 
+            if (Widgets.ButtonInvisible(headerRect))
+            {
+                SoundDefOf.Click.PlayOneShotOnCamera();
+                selectedProject = project;
+            }
+
             // Remove the standalone cost display entirely
             // Text.Anchor = TextAnchor.MiddleRight;
             // Widgets.Label(costRect, project.CostApparent.ToString());
-            
+
             // Redesigned stats row - all on a single line with more vertical space
             currentY += headerHeight + sectionSpacing; // More space after progress bar
 
@@ -2309,7 +2315,7 @@ namespace CM_Semi_Random_Research
             // Value with explicit centering
             GUI.color = new Color(0.65f, 0.8f, 0.9f); // Desaturated blue
             string currentRateText = hasRateData ? rateInfo.CurrentRateFormatted.Replace(" research/day", "/d") : "Calculating...";
-            float currentTextWidth = Text.CalcSize(currentRateText).x + 8f;
+            float currentTextWidth = Text.CalcSize(currentRateText).x + 10f;
             float currentCenterX = currentRateRect.x + (currentRateRect.width - currentTextWidth) / 2;
             Rect centeredCurrentRect = new Rect(currentCenterX, currentRateRect.y + statsLineHeight/2, currentTextWidth, statsLineHeight/2);
             Widgets.Label(centeredCurrentRect, currentRateText);
