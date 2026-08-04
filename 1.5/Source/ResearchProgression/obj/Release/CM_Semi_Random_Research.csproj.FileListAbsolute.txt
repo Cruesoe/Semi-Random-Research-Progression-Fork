@@ -1,5 +1,0 @@
-N:\SteamLibrary\steamapps\common\RimWorld\Mods\SemiRandomResearch\1.4\Assemblies\CM_Semi_Random_Research.dll
-N:\SteamLibrary\steamapps\common\RimWorld\Mods\SemiRandomResearch\1.5\Assemblies\CM_Semi_Random_Research.dll
-N:\SteamLibrary\steamapps\common\RimWorld\Mods\SemiRandomResearch\Source\CM_Semi_Random_Research\obj\Release\CM_Semi_Random_Research.csproj.CoreCompileInputs.cache
-N:\SteamLibrary\steamapps\common\RimWorld\Mods\SemiRandomResearch\Source\CM_Semi_Random_Research\obj\Release\CM_Semi_Random_Research.dll
-N:\SteamLibrary\steamapps\common\RimWorld\Mods\SemiRandomResearch\Source\CM_Semi_Random_Research\obj\Release\CM_Semi_Random_Research.csproj.AssemblyReference.cache

@@ -1,5 +1,0 @@
-C:\Program Files (x86)\Steam\steamapps\common\RimWorld\Mods\ResearchProgresstion\Source\ResearchProgresstion\obj\Debug\CM_Semi_Random_Research.csproj.AssemblyReference.cache
-C:\Program Files (x86)\Steam\steamapps\common\RimWorld\Mods\ResearchProgresstion\Source\ResearchProgresstion\obj\Debug\CM_Semi_Random_Research.csproj.CoreCompileInputs.cache
-C:\Program Files (x86)\Steam\steamapps\common\RimWorld\Mods\ResearchProgresstion\1.4\Assemblies\CM_Semi_Random_Research.dll
-C:\Program Files (x86)\Steam\steamapps\common\RimWorld\Mods\ResearchProgresstion\Source\ResearchProgresstion\obj\Debug\CM_Semi_Random_Research.dll
-C:\Program Files (x86)\Steam\steamapps\common\RimWorld\Mods\ResearchProgresstion\1.5\Assemblies\CM_Semi_Random_Research.dll
