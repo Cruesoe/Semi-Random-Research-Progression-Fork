@@ -1112,7 +1112,8 @@ namespace CM_Semi_Random_Research
             // Calculate positions with a fixed percentage approach for 3 sections
             float nameFieldPortion = 0.65f; // Reduced to make room for ETA
             float etaFieldPortion = 0.20f;  // Add portion for ETA
-//            float costFieldPortion = 0.15f; // Cost takes the remaining portion
+            // appears to be not used
+            // float costFieldPortion = 0.15f; // Cost takes the remaining portion
             
             float availableWidthAfterIcon = drawRect.width - (firstSeparator.xMax + nameLeftPadding);
             
@@ -2187,7 +2188,7 @@ namespace CM_Semi_Random_Research
             );
             
             // Second separator position - calculate with fixed percentage approach
-            float nameFieldPortion = 0.85f;
+            float nameFieldPortion = 0.80f;
             float availableWidthAfterIcon = headerRect.width - (firstSeparator.xMax + nameLeftPadding);
             Rect secondSeparator = new Rect(
                 firstSeparator.xMax + nameLeftPadding + (availableWidthAfterIcon * nameFieldPortion),
@@ -2308,7 +2309,7 @@ namespace CM_Semi_Random_Research
             // Value with explicit centering
             GUI.color = new Color(0.65f, 0.8f, 0.9f); // Desaturated blue
             string currentRateText = hasRateData ? rateInfo.CurrentRateFormatted.Replace(" research/day", "/d") : "Calculating...";
-            float currentTextWidth = Text.CalcSize(currentRateText).x;
+            float currentTextWidth = Text.CalcSize(currentRateText).x + 8f;
             float currentCenterX = currentRateRect.x + (currentRateRect.width - currentTextWidth) / 2;
             Rect centeredCurrentRect = new Rect(currentCenterX, currentRateRect.y + statsLineHeight/2, currentTextWidth, statsLineHeight/2);
             Widgets.Label(centeredCurrentRect, currentRateText);
@@ -2337,7 +2338,7 @@ namespace CM_Semi_Random_Research
             }
 
             GUI.color = new Color(0.8f, 0.8f, 0.6f); // Desaturated gold
-            float avgTextWidth = Text.CalcSize(averageRateText).x;
+            float avgTextWidth = Text.CalcSize(averageRateText).x + 8f;
             float avgCenterX = avgRateRect.x + (avgRateRect.width - avgTextWidth) / 2;
             Rect centeredAvgRect = new Rect(avgCenterX, avgRateRect.y + statsLineHeight/2, avgTextWidth, statsLineHeight/2);
             Widgets.Label(centeredAvgRect, averageRateText);
@@ -2384,7 +2385,7 @@ namespace CM_Semi_Random_Research
             }
 
             GUI.color = etaColor;
-            float etaTextWidth = Text.CalcSize(etaText).x;
+            float etaTextWidth = Text.CalcSize(etaText).x + 8f;
             float etaCenterX = etaRect.x + (etaRect.width - etaTextWidth) / 2;
             Rect centeredEtaRect = new Rect(etaCenterX, etaRect.y + statsLineHeight/2, etaTextWidth, statsLineHeight/2);
             Widgets.Label(centeredEtaRect, etaText);
