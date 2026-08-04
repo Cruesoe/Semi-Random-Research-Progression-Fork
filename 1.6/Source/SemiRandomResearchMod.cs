@@ -140,14 +140,14 @@ namespace CM_Semi_Random_Research
         {
             bool showResearchButtonWas = featureEnabled;
 
-            TextAnchor prevAnchor = Text.Anchor;
-            GameFont prevFont = Text.Font;
-            Text.Font = GameFont.Tiny;
-            string versionString = "CM_Semi_Random_Research_Setting_Version".Translate() + SemiRandomResearchMod.version;
-            Text.Anchor = TextAnchor.LowerLeft;
-            Widgets.Label(new Rect(0, 0, inRect.width, inRect.height + Window.CloseButSize.y + 40f), versionString);
-            Text.Anchor = prevAnchor;
-            Text.Font = prevFont;
+            //textanchor prevanchor = text.anchor;
+            //gamefont prevfont = text.font;
+            //text.font = gamefont.tiny;
+            //string versionstring = "cm_semi_random_research_setting_version".translate() + semirandomresearchmod.version;
+            //text.anchor = textanchor.lowerleft;
+            //widgets.label(new rect(0, 0, inrect.width, inrect.height + window.closebutsize.y + 40f), versionstring);
+            //text.anchor = prevanchor;
+            //text.font = prevfont;
 
 
             Listing_Standard listing_Standard = new Listing_Standard();
@@ -332,12 +332,12 @@ namespace CM_Semi_Random_Research
                     FieldInfo allButtonsInOrderField = mainButtonsRoot.GetType().GetField("allButtonsInOrder", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
                     List<MainButtonDef> mainButtons = allButtonsInOrderField.GetValue(mainButtonsRoot) as List<MainButtonDef>;
 
-                    MainButtonDef buttonToUse = SemiRandomResearchDefOf.CM_Semi_Random_Research_MainButton_Next_Research;
+                    MainButtonDef buttonToUse = SemiRandomResearchDefOf.Semi_Random_Research;
                     if (!featureEnabled)
                         buttonToUse = MainButtonDefOf.Research;
 
                     // Pull both of the buttons out to be sure, then put the correct one back in
-                    mainButtons = mainButtons.Where(button => button != MainButtonDefOf.Research && button != SemiRandomResearchDefOf.CM_Semi_Random_Research_MainButton_Next_Research).ToList();
+                    mainButtons = mainButtons.Where(button => button != MainButtonDefOf.Research && button != SemiRandomResearchDefOf.Semi_Random_Research).ToList();
                     mainButtons.Add(buttonToUse);
                     mainButtons.Sort((a, b) => a.order - b.order);
 
