@@ -33,7 +33,7 @@ namespace CM_Semi_Random_Research
                     if (SemiRandomResearchMod.settings.featureEnabled)
                         ___allButtonsInOrder = ___allButtonsInOrder.Where(button => button != MainButtonDefOf.Research).ToList();
                     else
-                        ___allButtonsInOrder = ___allButtonsInOrder.Where(button => button != SemiRandomResearchDefOf.CM_Semi_Random_Research_MainButton_Next_Research).ToList();
+                        ___allButtonsInOrder = ___allButtonsInOrder.Where(button => button != SemiRandomResearchDefOf.Semi_Random_Research).ToList();
                 }
             }
         }
@@ -57,7 +57,7 @@ namespace CM_Semi_Random_Research
 
                 if (tab == MainButtonDefOf.Research &&
                    (SemiRandomResearchMod.settings.featureEnabled && DiaOption_Patches.DiaOption_FinishProject.finishingProject))
-                    tab = SemiRandomResearchDefOf.CM_Semi_Random_Research_MainButton_Next_Research;
+                    tab = SemiRandomResearchDefOf.Semi_Random_Research;
             }
         }
     }
@@ -88,7 +88,7 @@ namespace CM_Semi_Random_Research
                     SoundDefOf.ResearchStart.PlayOneShotOnCamera();
 
                     MainTabWindow currentWindow = Find.WindowStack.WindowOfType<MainTabWindow>();
-                    MainTabWindow newWindow = SemiRandomResearchDefOf.CM_Semi_Random_Research_MainButton_Next_Research.TabWindow;
+                    MainTabWindow newWindow = SemiRandomResearchDefOf.Semi_Random_Research.TabWindow;
 
                     if (currentWindow != null && newWindow != null)
                     {
@@ -234,7 +234,7 @@ namespace CM_Semi_Random_Research
             {
                 if (SemiRandomResearchMod.settings.featureEnabled)
                 {
-                    Find.MainTabsRoot.SetCurrentTab(SemiRandomResearchDefOf.CM_Semi_Random_Research_MainButton_Next_Research);
+                    Find.MainTabsRoot.SetCurrentTab(SemiRandomResearchDefOf.Semi_Random_Research);
                     return false;
                 }
                 return true;
@@ -327,7 +327,7 @@ namespace CM_Semi_Random_Research
 
                         Find.TickManager?.Pause();
 
-                        MainButtonDef researchButton = SemiRandomResearchDefOf.CM_Semi_Random_Research_MainButton_Next_Research;
+                        MainButtonDef researchButton = SemiRandomResearchDefOf.Semi_Random_Research;
                         if (researchButton != null && Find.MainTabsRoot != null)
                         {
                             Find.MainTabsRoot.SetCurrentTab(researchButton);
