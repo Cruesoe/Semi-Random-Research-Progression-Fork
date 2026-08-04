@@ -2,7 +2,7 @@
 <Defs>
 
   <MainButtonDef>
-    <defName>CM_Semi_Random_Research_MainButton_Next_Research</defName>
+    <defName>Semi_Random_Research</defName>
     <label>research</label>
     <description>Select the next research project.</description>
     <tabWindowClass>CM_Semi_Random_Research.MainTabWindow_NextResearch</tabWindowClass>
