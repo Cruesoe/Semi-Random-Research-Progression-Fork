@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ModMetaData>
-	<name>Semi Random Research: Progression Fork</name>
+	<name>Semi Random Research: Progression Continued</name>
 	<author> Original author: Captain Muscles (Nathan Harbour)
-    Since this fork: Arodoid
+			 Original Progression Fork: Arodoid
     </author>
-	<packageId>arodoid.semirandomprogression</packageId>
+	<packageId>cruesoe.semirandomprogression</packageId>
 	<supportedVersions>
 	<li>1.2</li>
     <li>1.3</li>
