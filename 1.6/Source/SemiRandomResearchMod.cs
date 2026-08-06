@@ -1,11 +1,11 @@
-﻿using System;
+﻿using HarmonyLib;
+using RimWorld;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-
+using System.Runtime;
 using UnityEngine;
-using HarmonyLib;
-using RimWorld;
 using Verse;
 
 namespace CM_Semi_Random_Research
@@ -80,12 +80,52 @@ namespace CM_Semi_Random_Research
             base.WriteSettings();
             settings.UpdateSettings();
         }
-    }
 
-    // =========================================================================
-    // MOD SETTINGS CLASS
-    // =========================================================================
-    public class SemiRandomResearchModSettings : ModSettings
+        public static void UpdateShowResearchButton()
+        {
+            UIRoot_Play uiRootPlay = Find.UIRoot as UIRoot_Play;
+            if (uiRootPlay != null && uiRootPlay.mainButtonsRoot != null)
+            {
+                var allButtonsField = typeof(MainButtonsRoot).GetField("allButtonsInOrder", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+
+                if (allButtonsField != null)
+                {
+                    List<MainButtonDef> mainButtons = allButtonsField.GetValue(uiRootPlay.mainButtonsRoot) as List<MainButtonDef>;
+
+                    if (mainButtons != null)
+                    {
+                        MainButtonDef buttonToUse = SemiRandomResearchDefOf.Semi_Random_Research;
+                        bool nodeInstalled = ModLister.GetActiveModWithIdentifier("ferny.noderesearch") != null;
+
+                        // If feature is disabled OR Node Research has the baton, show the Vanilla/Node button
+                        if (!settings.featureEnabled || settings.usingNodeResearch)
+                        {
+                            buttonToUse = MainButtonDefOf.Research;
+
+                            if (settings.usingNodeResearch && nodeInstalled)
+                                buttonToUse.label = "Node Research";
+                            else
+                                buttonToUse.label = "Research"; // Reset for vanilla
+                        }
+                        else
+                        {
+                            buttonToUse.label = "Research";
+                        }
+
+                        mainButtons = mainButtons.Where(button => button != MainButtonDefOf.Research && button != SemiRandomResearchDefOf.Semi_Random_Research).ToList();
+                        mainButtons.Add(buttonToUse);
+                        mainButtons.Sort((a, b) => a.order - b.order);
+
+                        allButtonsField.SetValue(uiRootPlay.mainButtonsRoot, mainButtons);
+                    }
+                }
+            }
+        }
+    }
+        // =========================================================================
+        // MOD SETTINGS CLASS
+        // =========================================================================
+        public class SemiRandomResearchModSettings : ModSettings
     {
         public bool featureEnabled = true;
         public bool rerollAllEveryTime = true;
@@ -95,6 +135,8 @@ namespace CM_Semi_Random_Research
         public bool allowOneHigherTechProject = false;
         public bool allowSwitchingResearch = false;
         public ProgressAddsChoice progressAddsChoice = ProgressAddsChoice.Never;
+        public bool showResearchRateGraph = true;
+        public bool showCompletionLetter = true;
 
         public ManualReroll allowManualReroll = ManualReroll.None;
         public ChoiceAmountSelection amountSelection = ChoiceAmountSelection.Static;
@@ -109,7 +151,7 @@ namespace CM_Semi_Random_Research
         public bool equalizeCost = false;
         public bool verboseLogging = false;
 
-        public bool experimentalAnomalySupport = true;
+        public bool usingNodeResearch = false;
 
         private bool loggedSettings = false;
 
@@ -133,22 +175,14 @@ namespace CM_Semi_Random_Research
             Scribe_Values.Look(ref allowSwitchingResearch, "allowSwitchingResearch", false);
             Scribe_Values.Look(ref equalizeCost, "equalizeCost", false);
             Scribe_Values.Look(ref verboseLogging, "verboseLogging", false);
-            Scribe_Values.Look(ref experimentalAnomalySupport, "experimentalAnomalySupport", false);
+            Scribe_Values.Look(ref showResearchRateGraph, "showResearchRateGraph", true);
+            Scribe_Values.Look(ref showCompletionLetter, "showCompletionLetter", true);
+            Scribe_Values.Look(ref usingNodeResearch, "usingNodeResearch", false);
         }
 
         public void DoSettingsWindowContents(Rect inRect)
         {
             bool showResearchButtonWas = featureEnabled;
-
-            //textanchor prevanchor = text.anchor;
-            //gamefont prevfont = text.font;
-            //text.font = gamefont.tiny;
-            //string versionstring = "cm_semi_random_research_setting_version".translate() + semirandomresearchmod.version;
-            //text.anchor = textanchor.lowerleft;
-            //widgets.label(new rect(0, 0, inrect.width, inrect.height + window.closebutsize.y + 40f), versionstring);
-            //text.anchor = prevanchor;
-            //text.font = prevfont;
-
 
             Listing_Standard listing_Standard = new Listing_Standard();
 
@@ -262,14 +296,24 @@ namespace CM_Semi_Random_Research
 
             listing_Standard.GapLine();
             listing_Standard.CheckboxLabeled("CM_Semi_Random_Research_Setting_Verbose_Logging_Label".Translate(), ref verboseLogging, "CM_Semi_Random_Research_Setting_Verbose_Logging_Description".Translate());
-            listing_Standard.CheckboxLabeled("CM_Semi_Random_Research_Setting_Experimental_Anomaly_Support_Label".Translate(), ref experimentalAnomalySupport, "CM_Semi_Random_Research_Setting_Experimental_Anomaly_Support_Description".Translate());
+            listing_Standard.CheckboxLabeled("Show research rate graph", ref showResearchRateGraph, "Toggles the visibility of the performance graph on the active research card.");
+            listing_Standard.CheckboxLabeled("Show completion letter", ref showCompletionLetter, "Toggles the visibility of the completion letter when a research project is finished.");
 
+            // Dynamically show the toggle in the config menu ONLY if Node is installed
+            if (ModLister.GetActiveModWithIdentifier("ferny.noderesearch") != null)
+            {
+                listing_Standard.GapLine();
+                listing_Standard.CheckboxLabeled(
+                    "Delegate UI to Node Research",
+                    ref usingNodeResearch,
+                    "Passes control of research selection to Node Research. You can also toggle this in-game using the footer buttons."
+                );
+            }
 
             listing_Standard.End();
 
-
             if (featureEnabled != showResearchButtonWas)
-                UpdateShowResearchButton();
+                SemiRandomResearchMod.UpdateShowResearchButton();
 
             DumpSettingToLog();
         }
@@ -316,34 +360,7 @@ namespace CM_Semi_Random_Research
                 $"reofferAfterAmountOfRerolls: {reofferAfterAmountOfRerolls} " +
                 $"equalizeCost: {equalizeCost} " +
                 $"verboseLogging: {verboseLogging} " +
-                $"experimentalAnomalySupport: {experimentalAnomalySupport} ");
-        }
-
-        public void UpdateShowResearchButton()
-        {
-            UIRoot_Play uiRootPlay = Find.UIRoot as UIRoot_Play;
-
-            if (uiRootPlay != null)
-            {
-                MainButtonsRoot mainButtonsRoot = uiRootPlay.mainButtonsRoot;
-
-                if (mainButtonsRoot != null)
-                {
-                    FieldInfo allButtonsInOrderField = mainButtonsRoot.GetType().GetField("allButtonsInOrder", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                    List<MainButtonDef> mainButtons = allButtonsInOrderField.GetValue(mainButtonsRoot) as List<MainButtonDef>;
-
-                    MainButtonDef buttonToUse = SemiRandomResearchDefOf.Semi_Random_Research;
-                    if (!featureEnabled)
-                        buttonToUse = MainButtonDefOf.Research;
-
-                    // Pull both of the buttons out to be sure, then put the correct one back in
-                    mainButtons = mainButtons.Where(button => button != MainButtonDefOf.Research && button != SemiRandomResearchDefOf.Semi_Random_Research).ToList();
-                    mainButtons.Add(buttonToUse);
-                    mainButtons.Sort((a, b) => a.order - b.order);
-
-                    allButtonsInOrderField.SetValue(mainButtonsRoot, mainButtons);
-                }
-            }
+                $"showResearchRateGraph: {showResearchRateGraph}");
         }
     }
 }

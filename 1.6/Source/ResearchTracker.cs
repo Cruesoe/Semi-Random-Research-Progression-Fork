@@ -14,7 +14,7 @@ namespace CM_Semi_Random_Research
     public class ResearchTracker : WorldComponent
     {
         private List<ResearchProjectDef> currentAvailableProjects = new List<ResearchProjectDef>();
-        private Dictionary<ResearchProjectDef,int> notChosenProjects = new Dictionary<ResearchProjectDef, int>();
+        private Dictionary<ResearchProjectDef, int> notChosenProjects = new Dictionary<ResearchProjectDef, int>();
         private Dictionary<string, int> currentRerollState = new Dictionary<string, int>();
         private List<ResearchProjectDef> currentProjects = new List<ResearchProjectDef>();
         private HashSet<ResearchProjectDef> additionalAvailableProjects = new HashSet<ResearchProjectDef>();
@@ -24,7 +24,7 @@ namespace CM_Semi_Random_Research
 
         public bool autoResearch = false;
 
-        private Dictionary<string,bool> rerolled = new Dictionary<string, bool>();
+        private Dictionary<string, bool> rerolled = new Dictionary<string, bool>();
         private Dictionary<string, List<ResearchProjectDef>> projectDefsCacheByType = new Dictionary<string, List<ResearchProjectDef>>();
         private Dictionary<string, List<ResearchProjectDef>> currentProjectDefsCacheByType = new Dictionary<string, List<ResearchProjectDef>>();
         private HashSet<string> completedTypes = new HashSet<string>();
@@ -35,26 +35,43 @@ namespace CM_Semi_Random_Research
         private int previousDefCount = 0;
         private bool additionalProjectsRefresh = true;
 
-        //Whether the previous offered research was picked based on equalize cost calculations (true) or chosen randomly (false)
         private Dictionary<string, bool> lastPicked = new Dictionary<string, bool>();
-
         private Dictionary<string, string> loggedMessages = new Dictionary<string, string>();
 
-        private List<KnowledgeCategoryDef> all_types;
+        private List<string> all_typeKeys;
 
         public ResearchTracker(World world) : base(world)
         {
             previousDefCount = DefDatabase<ResearchProjectDef>.AllDefsListForReading.Count;
+            RefreshTypeKeys();
+        }
 
-            all_types = DefDatabase<KnowledgeCategoryDef>.AllDefsListForReading.ListFullCopy();
-            all_types.Add(null);
+        private void RefreshTypeKeys()
+        {
+            all_typeKeys = DefDatabase<KnowledgeCategoryDef>.AllDefsListForReading.Select(x => x.defName).ToList();
+            all_typeKeys.Add("Standard");
+            all_typeKeys.Add("Gravship");
+            all_typeKeys.Add("Divinitech"); // Future-proofed for your other mod!
+            all_typeKeys = all_typeKeys.Distinct().ToList();
+        }
+
+        // ==============================================================================
+        // PSEUDO-CATEGORY GENERATOR
+        // ==============================================================================
+        public static string GetCategoryKey(ResearchProjectDef def)
+        {
+            if (def == null) return "Standard";
+            if (def.tab?.defName == "VGE_Gravtech" || def.tab?.defName == "VGE_GravShip") return "Gravship";
+            if (def.knowledgeCategory?.defName == "Information") return "Divinitech";
+            if (def.knowledgeCategory != null) return def.knowledgeCategory.defName;
+            return "Standard";
         }
 
         public override void FinalizeInit(bool fromLoad)
         {
             base.FinalizeInit(fromLoad);
             SettingsChanged();
-        }        
+        }
 
         public override void ExposeData()
         {
@@ -65,88 +82,49 @@ namespace CM_Semi_Random_Research
             Scribe_Collections.Look(ref additionalAvailableProjects, "additionalAvailableProjectsByGain", LookMode.Def);
             Scribe_Collections.Look(ref currentProjects, "currentProject", LookMode.Def);
 
-            if(notChosenProjects == null) 
-            {
-                notChosenProjects = new Dictionary<ResearchProjectDef, int>();
-            }
-
-            if (currentProjects == null)
-            {
-                currentProjects = new List<ResearchProjectDef>();
-            }
-
-            if (currentAvailableProjects == null)
-            {
-                currentAvailableProjects = new List<ResearchProjectDef>();
-            }
-
-            if(additionalAvailableProjects == null)
-            {
-                additionalAvailableProjects = new HashSet<ResearchProjectDef>();
-            }
+            if (notChosenProjects == null) notChosenProjects = new Dictionary<ResearchProjectDef, int>();
+            if (currentProjects == null) currentProjects = new List<ResearchProjectDef>();
+            if (currentAvailableProjects == null) currentAvailableProjects = new List<ResearchProjectDef>();
+            if (additionalAvailableProjects == null) additionalAvailableProjects = new HashSet<ResearchProjectDef>();
 
             if (SemiRandomResearchMod.settings.verboseLogging)
             {
                 string allCurrentProjects = "";
-                foreach(ResearchProjectDef def in currentProjects)
-                {
-                    allCurrentProjects += def != null ? def.LabelCap.RawText : "Null";
-                    allCurrentProjects += " ";
-                }
+                foreach (ResearchProjectDef def in currentProjects)
+                    allCurrentProjects += def != null ? def.LabelCap.RawText : "Null" + " ";
                 LogIfNewMessage("Loaded Current Projects", allCurrentProjects);
 
                 string allAvailableProjects = "";
                 foreach (ResearchProjectDef def in currentAvailableProjects)
-                {
-                    allAvailableProjects += def != null ? def.LabelCap.RawText : "Null";
-                    allAvailableProjects += " ";
-                }
+                    allAvailableProjects += def != null ? def.LabelCap.RawText : "Null" + " ";
                 LogIfNewMessage("Loaded Available Projects", allAvailableProjects);
-
             }
 
             Scribe_Collections.Look(ref rerolled, "rerolled");
-
-            if (rerolled == null)
-            {
-                rerolled = new Dictionary<string,bool>();
-            }
+            if (rerolled == null) rerolled = new Dictionary<string, bool>();
 
             Scribe_Collections.Look(ref currentRerollState, "currentRerollState");
-
-            if (currentRerollState == null)
-            {
-                currentRerollState = new Dictionary<string, int>();
-            }
+            if (currentRerollState == null) currentRerollState = new Dictionary<string, int>();
 
             Scribe_Values.Look(ref autoResearch, "autoResearch", false);
 
             Scribe_Collections.Look(ref lastPicked, "lastPicked");
-
-            if (lastPicked == null)
-            {
-                lastPicked = new Dictionary<string, bool>();
-            }
+            if (lastPicked == null) lastPicked = new Dictionary<string, bool>();
 
             Scribe_Collections.Look(ref pendingResearchRerolls, "pendingResearchRerolls", LookMode.Def);
-
-            if (pendingResearchRerolls == null)
-            {
-                pendingResearchRerolls = new HashSet<KnowledgeCategoryDef>();
-            }
+            if (pendingResearchRerolls == null) pendingResearchRerolls = new HashSet<KnowledgeCategoryDef>();
         }
 
         public override void WorldComponentTick()
         {
             base.WorldComponentTick();
 
-            // Check if research is done
-            // We don't need this EVERY tick, but it should be somewhat frequent
             if ((tickCounter % tickShortOffset) == 0)
             {
-                foreach (KnowledgeCategoryDef type in all_types)
+                if (all_typeKeys == null) RefreshTypeKeys();
+
+                foreach (string typeKey in all_typeKeys)
                 {
-                    string typeKey = type == null ? "null" : type.defName;
                     List<ResearchProjectDef> currentProjectOfType = new List<ResearchProjectDef>();
                     if (currentProjectDefsCacheByType.ContainsKey(typeKey))
                     {
@@ -168,44 +146,53 @@ namespace CM_Semi_Random_Research
                     {
                         if (autoResearch && (finished || (tickCounter % tickOffset) == 0))
                         {
-                            List<ResearchProjectDef> possibleProjectsOfType = GetCurrentlyAvailableProjects().Where(x => x.knowledgeCategory == type).ToList();
+                            List<ResearchProjectDef> possibleProjectsOfType = GetCurrentlyAvailableProjects().Where(x => GetCategoryKey(x) == typeKey).ToList();
 
                             if (!possibleProjectsOfType.Empty())
                             {
-                                SetCurrentProject(possibleProjectsOfType.First(), type);
-                                currentProjectOfType = currentProjects.Where(x => x.knowledgeCategory == type).ToList();
+                                SetCurrentProjectByKey(possibleProjectsOfType.First(), typeKey);
+                                currentProjectOfType = currentProjects.Where(x => GetCategoryKey(x) == typeKey).ToList();
                             }
                         }
                     }
 
                     if ((tickCounter % tickOffset) == 0)
                     {
-                        // This is a fairly expensive call
-                        ResearchProjectDef activeProject = Find.ResearchManager.GetProject(type);
+                        // Safely find the active project for this pseudo-category
+                        ResearchProjectDef activeProject = null;
+                        ResearchProjectDef standardActive = Find.ResearchManager.GetProject(null);
+                        if (standardActive != null && GetCategoryKey(standardActive) == typeKey)
+                            activeProject = standardActive;
 
-                        // This should not be required, but there are some mods that stop the current research. This restores them.  
+                        foreach (var cat in DefDatabase<KnowledgeCategoryDef>.AllDefsListForReading)
+                        {
+                            ResearchProjectDef catActive = Find.ResearchManager.GetProject(cat);
+                            if (catActive != null && GetCategoryKey(catActive) == typeKey)
+                                activeProject = catActive;
+                        }
+
                         if (activeProject == null && !currentProjectOfType.Empty() && currentProjectOfType.First().CanStartNow)
                         {
-                            SetCurrentProject(currentProjectOfType.First(), type);
+                            SetCurrentProjectByKey(currentProjectOfType.First(), typeKey);
                         }
                         else if (activeProject != null && (currentProjectOfType.Empty() || !currentProjectOfType.Contains(activeProject)) && activeProject.CanStartNow)
                         {
                             if (!SemiRandomResearchMod.settings.featureEnabled)
                             {
-                                SetCurrentProject(activeProject, type);
+                                SetCurrentProjectByKey(activeProject, typeKey);
                             }
                             else if (currentProjectOfType.Empty() && currentAvailableProjects.Contains(activeProject))
                             {
-                                SetCurrentProject(activeProject, type);
+                                SetCurrentProjectByKey(activeProject, typeKey);
                             }
                             else if (!currentProjectOfType.Empty())
                             {
-                                SetCurrentProject(currentProjectOfType.First(), type);
+                                SetCurrentProjectByKey(currentProjectOfType.First(), typeKey);
                             }
                             else
                             {
-                                LogIfNewMessage("WorldTickUnexpectedState" + type, $"Error? Set as activeProject: {activeProject.LabelCap} currentAvailableProjects: {currentAvailableProjects.Count} and of type {type}: {currentAvailableProjects.Where(x => x.knowledgeCategory == type).Count()}");
-                                SetCurrentProject(activeProject, type);
+                                LogIfNewMessage("WorldTickUnexpectedState" + typeKey, $"Error? Set as activeProject: {activeProject.LabelCap} currentAvailableProjects: {currentAvailableProjects.Count} and of type {typeKey}: {currentAvailableProjects.Where(x => GetCategoryKey(x) == typeKey).Count()}");
+                                SetCurrentProjectByKey(activeProject, typeKey);
                             }
                         }
                     }
@@ -220,28 +207,24 @@ namespace CM_Semi_Random_Research
 
         public List<ResearchProjectDef> GetCurrentlyAvailableProjects()
         {
-            List<KnowledgeCategoryDef> all_types = DefDatabase<KnowledgeCategoryDef>.AllDefsListForReading.ListFullCopy();
-            all_types = all_types.Prepend(null).ToList();
+            if (all_typeKeys == null) RefreshTypeKeys();
             List<ResearchProjectDef> result = new List<ResearchProjectDef>();
-            SemiRandomResearchMod.settings.DumpSettingToLog(); //Only dumps the setting if verbose logging is enabled and then only once.
-            foreach (KnowledgeCategoryDef type in all_types)
-            {
-                if(!SemiRandomResearchMod.settings.experimentalAnomalySupport && type != null)
-                {
-                    continue;
-                }
+            SemiRandomResearchMod.settings.DumpSettingToLog();
 
-                currentAvailableProjects = currentAvailableProjects.Where(projectDef => projectDef != null && 
+            foreach (string typeKey in all_typeKeys)
+            {
+                currentAvailableProjects = currentAvailableProjects.Where(projectDef => projectDef != null &&
                 !projectDef.IsFinished &&
                 !projectDef.IsHidden &&
                 Compatibility.SatisfiesAlienRaceRestriction(projectDef)).ToList();
-                List<ResearchProjectDef> currentAvailableValidProjectsOfType = currentAvailableProjects.Where(x => x.knowledgeCategory == type && x.CanStartNow).ToList();
-                List<ResearchProjectDef> currentProjectOfType = currentProjects.Where(x => x.knowledgeCategory == type).ToList();
+
+                List<ResearchProjectDef> currentAvailableValidProjectsOfType = currentAvailableProjects.Where(x => GetCategoryKey(x) == typeKey && x.CanStartNow).ToList();
+                List<ResearchProjectDef> currentProjectOfType = currentProjects.Where(x => GetCategoryKey(x) == typeKey).ToList();
 
                 if (!SemiRandomResearchMod.settings.rerollAllEveryTime ||
                     SemiRandomResearchMod.settings.allowSwitchingResearch ||
                     currentProjectOfType.Empty() ||
-                    currentProjectOfType.Any(x=>x.IsFinished || !Compatibility.SatisfiesAlienRaceRestriction(x)))
+                    currentProjectOfType.Any(x => x.IsFinished || !Compatibility.SatisfiesAlienRaceRestriction(x)))
                 {
 
                     int additionalProjects = SemiRandomResearchMod.settings.amountSelection == ChoiceAmountSelection.PerColonist ?
@@ -252,26 +235,25 @@ namespace CM_Semi_Random_Research
 
                     bool handledProjects = false;
                     int numberOfMissingProjects = Math.Min((SemiRandomResearchMod.settings.availableProjectCount + additionalProjects), SemiRandomResearchMod.settings.maxProjectCount) - currentAvailableValidProjectsOfType.Count;
-                    
+
                     if (numberOfMissingProjects > 0 || additionalProjectsRefresh)
                     {
-                        List<ResearchProjectDef> nextProjects = GetResearchableProjects(numberOfMissingProjects, type);
+                        List<ResearchProjectDef> nextProjects = GetResearchableProjects(numberOfMissingProjects, typeKey);
 
                         if (!nextProjects.NullOrEmpty())
                         {
                             currentAvailableProjects.AddRange(nextProjects);
-                            currentAvailableProjects = currentAvailableProjects.Distinct().ToList(); // Do a distinct check. Should not be required, but better be sure.
+                            currentAvailableProjects = currentAvailableProjects.Distinct().ToList();
                             currentAvailableValidProjectsOfType.AddRange(nextProjects);
                             currentAvailableValidProjectsOfType = currentAvailableValidProjectsOfType.Distinct().ToList();
                             handledProjects = true;
                             result.AddRange(currentAvailableValidProjectsOfType);
                         }
-                        // There may be added more projects than requested in some cased, e.g. when progressAddsChoice != None, so update that value
                         numberOfMissingProjects = Math.Min((SemiRandomResearchMod.settings.availableProjectCount + additionalProjects), SemiRandomResearchMod.settings.maxProjectCount) - currentAvailableValidProjectsOfType.Count;
                     }
                     int projectsAddedAdditional = currentAvailableValidProjectsOfType.Count(x => additionalAvailableProjects.Contains(x));
                     int progressAddedProgressed = currentAvailableValidProjectsOfType.Count(x => x.ProgressReal > 0 && !currentProjectOfType.Contains(x) && !additionalAvailableProjects.Contains(x));
-                    int extraAddedProgress = SemiRandomResearchMod.settings.progressAddsChoice == ProgressAddsChoice.AddChoice ? progressAddedProgressed: 0;
+                    int extraAddedProgress = SemiRandomResearchMod.settings.progressAddsChoice == ProgressAddsChoice.AddChoice ? progressAddedProgressed : 0;
                     if (numberOfMissingProjects < -extraAddedProgress - projectsAddedAdditional)
                     {
                         int amountToRemove = -1 * numberOfMissingProjects - (extraAddedProgress + projectsAddedAdditional);
@@ -291,27 +273,26 @@ namespace CM_Semi_Random_Research
                         IEnumerable<ResearchProjectDef> keepable = currentAvailableValidProjectsOfType.Where(x => !currentProjects.Contains(x) && !currentAvailableProjectsWithoutCurrentProject.Contains(x));
                         currentAvailableProjectsWithoutCurrentProject.AddRange(keepable.Reverse().Skip(amountToRemove).Reverse());
 
-                        if (!currentProjectOfType.Empty() && currentProjectOfType.Any(x=>!x.IsFinished && Compatibility.SatisfiesAlienRaceRestriction(x)))
+                        if (!currentProjectOfType.Empty() && currentProjectOfType.Any(x => !x.IsFinished && Compatibility.SatisfiesAlienRaceRestriction(x)))
                         {
                             currentAvailableProjectsWithoutCurrentProject.AddRange(currentProjectOfType);
                         }
-                        //return the modified list instead of updating the original list to prevent players from cheesing the mechanic using cryptosleep capsules
                         handledProjects = true;
                         result.AddRange(currentAvailableProjectsWithoutCurrentProject);
                         if (SemiRandomResearchMod.settings.verboseLogging)
-                            LogIfNewMessage("numberOfMissingProjects < 0" + type, $"More projects available than expected. numberOfMissingProjects: {numberOfMissingProjects} Values: additionalProjects {additionalProjects} amountToRemove: {amountToRemove} keepable.Count: {keepable.Count()} extraAddedProgress: {extraAddedProgress} projectsAddedAdditional:{projectsAddedAdditional}" );
+                            LogIfNewMessage("numberOfMissingProjects < 0" + typeKey, $"More projects available than expected. numberOfMissingProjects: {numberOfMissingProjects} Values: additionalProjects {additionalProjects} amountToRemove: {amountToRemove} keepable.Count: {keepable.Count()} extraAddedProgress: {extraAddedProgress} projectsAddedAdditional:{projectsAddedAdditional}");
 
                     }
-                    if (! handledProjects)
+                    if (!handledProjects)
                     {
                         if (SemiRandomResearchMod.settings.verboseLogging && currentAvailableValidProjectsOfType.Count == 0)
-                            LogIfNewMessage("numberOfMissingProjects = 0" + type, $"No projects are to be added even though non are available?Values: additionalProjects {additionalProjects} extraAddedProgress: {extraAddedProgress} projectsAddedAdditional:{projectsAddedAdditional}");
+                            LogIfNewMessage("numberOfMissingProjects = 0" + typeKey, $"No projects are to be added even though non are available?Values: additionalProjects {additionalProjects} extraAddedProgress: {extraAddedProgress} projectsAddedAdditional:{projectsAddedAdditional}");
 
                         result.AddRange(currentAvailableValidProjectsOfType);
                     }
                     additionalProjectsRefresh = false;
                 }
-                else 
+                else
                 {
                     result.AddRange(currentProjectOfType);
                 }
@@ -319,38 +300,34 @@ namespace CM_Semi_Random_Research
             return result;
         }
 
-        private List<ResearchProjectDef> GetResearchableProjects(int count, KnowledgeCategoryDef type)
+        private List<ResearchProjectDef> GetResearchableProjects(int count, string typeKey)
         {
-            string typeKey = type == null ? "null" : type.defName;
-
             if (completedTypes.Contains(typeKey) &&
                 previousDefCount == DefDatabase<ResearchProjectDef>.AllDefsListForReading.Count)
             {
                 if (SemiRandomResearchMod.settings.verboseLogging)
                 {
-                    LogIfNewMessage("Skipping" + type, "Type Completed");
+                    LogIfNewMessage("Skipping" + typeKey, "Type Completed");
                 }
 
                 return new List<ResearchProjectDef>();
             }
 
             TechLevel maxCurrentProjectTechlevel = TechLevel.Archotech;
-            // Get the max tech level of projects already in the offered list
             if (currentAvailableProjects.Count > 0)
                 maxCurrentProjectTechlevel = currentAvailableProjects.Select(projectDef => projectDef.techLevel).Max();
             TechLevel minCurrentProjectTechlevel = TechLevel.Archotech;
-            // Get the min tech level of projects already in the offered list
             if (currentAvailableProjects.Count > 0)
                 minCurrentProjectTechlevel = currentAvailableProjects.Select(projectDef => projectDef.techLevel).Min();
 
-            if(!projectDefsCacheByType.ContainsKey(typeKey) ||
+            if (!projectDefsCacheByType.ContainsKey(typeKey) ||
                 previousDefCount == DefDatabase<ResearchProjectDef>.AllDefsListForReading.Count)
             {
                 projectDefsCacheByType[typeKey] = DefDatabase<ResearchProjectDef>.AllDefsListForReading
                 .Where((ResearchProjectDef projectDef) => !projectDef.IsFinished &&
-                projectDef.knowledgeCategory == type).ToList();
+                GetCategoryKey(projectDef) == typeKey).ToList();
 
-                if(!projectDefsCacheByType[typeKey].Any())
+                if (!projectDefsCacheByType[typeKey].Any())
                 {
                     completedTypes.Add(typeKey);
                 }
@@ -367,26 +344,24 @@ namespace CM_Semi_Random_Research
                 {
                     List<ResearchProjectDef> allAvailableProjectsDebug = DefDatabase<ResearchProjectDef>.AllDefsListForReading;
 
-                    LogIfNewMessage("NoAvailableProjects1" + type, $"[CM_Semi_Random_Research] Total projects in game: {allAvailableProjectsDebug.Count}");
+                    LogIfNewMessage("NoAvailableProjects1" + typeKey, $"[CM_Semi_Random_Research] Total projects in game: {allAvailableProjectsDebug.Count}");
                     allAvailableProjectsDebug = allAvailableProjectsDebug.Where((ResearchProjectDef projectDef) => projectDef.CanStartNow).ToList();
-                    LogIfNewMessage("NoAvailableProjects2" + type, $"[CM_Semi_Random_Research] Of which { allAvailableProjectsDebug.Count} Could be started now");
+                    LogIfNewMessage("NoAvailableProjects2" + typeKey, $"[CM_Semi_Random_Research] Of which {allAvailableProjectsDebug.Count} Could be started now");
                     allAvailableProjectsDebug = allAvailableProjectsDebug.Where((ResearchProjectDef projectDef) => Compatibility.SatisfiesAlienRaceRestriction(projectDef)).ToList();
-                    LogIfNewMessage("NoAvailableProjects3" + type, $"[CM_Semi_Random_Research] Of which { allAvailableProjectsDebug.Count} you have the required races for (Humanoid Alien Races Compability Check)");
-                    allAvailableProjectsDebug = allAvailableProjectsDebug.Where((ResearchProjectDef projectDef) => ! projectDef.IsDummyResearch()).ToList();
-                    LogIfNewMessage("NoAvailableProjects4" + type, $"[CM_Semi_Random_Research] Of which { allAvailableProjectsDebug.Count} are not Dummy researches");
+                    LogIfNewMessage("NoAvailableProjects3" + typeKey, $"[CM_Semi_Random_Research] Of which {allAvailableProjectsDebug.Count} you have the required races for");
+                    allAvailableProjectsDebug = allAvailableProjectsDebug.Where((ResearchProjectDef projectDef) => !projectDef.IsDummyResearch()).ToList();
+                    LogIfNewMessage("NoAvailableProjects4" + typeKey, $"[CM_Semi_Random_Research] Of which {allAvailableProjectsDebug.Count} are not Dummy researches");
                 }
             }
 
-            // Get a random project if we are allowed to have one ignoring the restrictions.
-            ResearchProjectDef randomProject=null;
-            if (allAvailableProjects.Any() && SemiRandomResearchMod.settings.allowOneHigherTechProject && 
-                (!SemiRandomResearchMod.settings.restrictToFactionTechLevel || maxCurrentProjectTechlevel<= Faction.OfPlayer.def.techLevel) && 
+            ResearchProjectDef randomProject = null;
+            if (allAvailableProjects.Any() && SemiRandomResearchMod.settings.allowOneHigherTechProject &&
+                (!SemiRandomResearchMod.settings.restrictToFactionTechLevel || maxCurrentProjectTechlevel <= Faction.OfPlayer.def.techLevel) &&
                 (!SemiRandomResearchMod.settings.forceLowestTechLevel || maxCurrentProjectTechlevel == minCurrentProjectTechlevel))
             {
                 randomProject = allAvailableProjects.RandomElement();
             }
 
-            // If setting is enabled, block techs beyond player faction's tech level
             if (SemiRandomResearchMod.settings.restrictToFactionTechLevel)
             {
                 TechLevel maxTechLevel = Faction.OfPlayer.def.techLevel;
@@ -394,15 +369,12 @@ namespace CM_Semi_Random_Research
 
                 if (SemiRandomResearchMod.settings.verboseLogging)
                 {
-                    LogIfNewMessage("AfterRestrictToFactionTechLevel"+type, "Currently possible projects after restrictToFactionTechLevel: " + allAvailableProjects.Count());
+                    LogIfNewMessage("AfterRestrictToFactionTechLevel" + typeKey, "Currently possible projects after restrictToFactionTechLevel: " + allAvailableProjects.Count());
                 }
-
             }
 
-            // Force completing lowest level if setting is enabled
             if (allAvailableProjects.Any() && SemiRandomResearchMod.settings.forceLowestTechLevel)
             {
-                // Go through each tech level and select from lowest available
                 for (TechLevel techLevel = TechLevel.Animal; techLevel <= TechLevel.Archotech; ++techLevel)
                 {
                     IEnumerable<ResearchProjectDef> projectsAtTechLevel = allAvailableProjects.Where(projectDef => projectDef.techLevel <= techLevel);
@@ -415,9 +387,8 @@ namespace CM_Semi_Random_Research
 
                 if (SemiRandomResearchMod.settings.verboseLogging)
                 {
-                    LogIfNewMessage("AfterForceLowestTechLevel" + type, "Currently possible projects after forceLowestTechLevel: " + allAvailableProjects.Count());
+                    LogIfNewMessage("AfterForceLowestTechLevel" + typeKey, "Currently possible projects after forceLowestTechLevel: " + allAvailableProjects.Count());
                 }
-
             }
             List<ResearchProjectDef> selectedProjects = new List<ResearchProjectDef>();
             selectedProjects.AddRange(allAvailableProjects.Where(x => additionalAvailableProjects.Contains(x)));
@@ -442,7 +413,7 @@ namespace CM_Semi_Random_Research
 
                 if (SemiRandomResearchMod.settings.verboseLogging)
                 {
-                    LogIfNewMessage("ReofferAfterAmountOfRerollsCount" + type, "This many researches were not offered recently: " + possibleNotShownRecently.Count + " while this many were shown recently: " + notChosenProjects.Keys.Count(x => x.knowledgeCategory == type && !x.IsFinished));
+                    LogIfNewMessage("ReofferAfterAmountOfRerollsCount" + typeKey, "This many researches were not offered recently: " + possibleNotShownRecently.Count + " while this many were shown recently: " + notChosenProjects.Keys.Count(x => GetCategoryKey(x) == typeKey && !x.IsFinished));
                 }
                 int remainingCount = count;
 
@@ -450,7 +421,7 @@ namespace CM_Semi_Random_Research
                 {
                     if (SemiRandomResearchMod.settings.verboseLogging)
                     {
-                        LogIfNewMessage("PossibleNotShownRecently" + type, "Picking from recently shown researches this many projects: " + (count - possibleNotShownRecently.Count));
+                        LogIfNewMessage("PossibleNotShownRecently" + typeKey, "Picking from recently shown researches this many projects: " + (count - possibleNotShownRecently.Count));
                     }
                     possibleNotShownRecently.AddRange(allAvailableProjects.Where(x => notChosenProjects.ContainsKey(x)).Take(count - possibleNotShownRecently.Count));
                 }
@@ -491,21 +462,21 @@ namespace CM_Semi_Random_Research
                 {
                     float averageAvailableCost = allAvailableProjects.Select(x => x.CostApparent).Sum() / allAvailableProjects.Count();
                     float averageCurrentCost = (currentAvailableProjects.Select(x => x.CostApparent).Sum() + selectedProjectsFirstHalf.Select(x => x.CostApparent).Sum() + selectedProjects.Sum(x => x.CostApparent))
-                        / Math.Max(currentAvailableProjects.Count + selectedProjects.Count + selectedProjectsFirstHalf.Count,1);
-                    float targetAddedAverageCost = ((averageAvailableCost * (currentAvailableProjects.Count+count)) 
-                        - (currentAvailableProjects.Count + selectedProjectsFirstHalf.Count) * averageCurrentCost)/(amountToPick); 
+                        / Math.Max(currentAvailableProjects.Count + selectedProjects.Count + selectedProjectsFirstHalf.Count, 1);
+                    float targetAddedAverageCost = ((averageAvailableCost * (currentAvailableProjects.Count + count))
+                        - (currentAvailableProjects.Count + selectedProjectsFirstHalf.Count) * averageCurrentCost) / (amountToPick);
                     allAvailableProjects = allAvailableProjects.Where(x => !selectedProjectsFirstHalf.Contains(x));
 
                     if (SemiRandomResearchMod.settings.verboseLogging)
                     {
-                       LogIfNewMessage("equalizeCostPick1" + type, $"Picking projects to equalize: Average research cost of all still available projects: {averageAvailableCost} \nAverage cost of the randomly selected projects: {averageCurrentCost}  \nTarget that the other projects added should have on average: {targetAddedAverageCost} \nThere were {amountToRandomlyGenerate} projects selected randomly. \nBefore adding projects there were {currentAvailableProjects.Count} already in the list. \nThere will be picked {amountToPick} projects.");
+                        LogIfNewMessage("equalizeCostPick1" + typeKey, $"Picking projects to equalize: Average research cost of all still available projects: {averageAvailableCost} \nAverage cost of the randomly selected projects: {averageCurrentCost}  \nTarget that the other projects added should have on average: {targetAddedAverageCost} \nThere were {amountToRandomlyGenerate} projects selected randomly. \nBefore adding projects there were {currentAvailableProjects.Count} already in the list. \nThere will be picked {amountToPick} projects.");
                     }
 
                     IEnumerable<ResearchProjectDef> bestSelectedProjects = new List<ResearchProjectDef>();
                     float bestAverage = float.MaxValue;
-                    for(int i = 0; i < 25; i++)
+                    for (int i = 0; i < 25; i++)
                     {
-                        allAvailableProjects = allAvailableProjects.InRandomOrder(); // Pretty bad performance wise. Is there a better option
+                        allAvailableProjects = allAvailableProjects.InRandomOrder();
                         IEnumerable<ResearchProjectDef> iterSelectedProjects = allAvailableProjects.Take(Math.Min(amountToPick, allAvailableProjects.Count()));
                         float actualAverage = iterSelectedProjects.Select(x => x.CostApparent).Sum() / iterSelectedProjects.Count();
                         if (Math.Abs(bestAverage - targetAddedAverageCost) > Math.Abs(actualAverage - targetAddedAverageCost))
@@ -518,12 +489,12 @@ namespace CM_Semi_Random_Research
 
                     if (SemiRandomResearchMod.settings.verboseLogging)
                     {
-                        LogIfNewMessage("equalizeCostPick2" + type, $"Total cost of picked projects: {bestSelectedProjects.Select(x => x.CostApparent).Sum()} ");
+                        LogIfNewMessage("equalizeCostPick2" + typeKey, $"Total cost of picked projects: {bestSelectedProjects.Select(x => x.CostApparent).Sum()} ");
                     }
                 }
                 else if (SemiRandomResearchMod.settings.verboseLogging)
                 {
-                    LogIfNewMessage("equalizeCostNoPick" + type, $"[There were {amountToRandomlyGenerate} projects selected randomly as part of cost equalization");
+                    LogIfNewMessage("equalizeCostNoPick" + typeKey, $"[There were {amountToRandomlyGenerate} projects selected randomly as part of cost equalization");
                 }
             }
             else
@@ -532,7 +503,7 @@ namespace CM_Semi_Random_Research
 
                 if (SemiRandomResearchMod.settings.verboseLogging)
                 {
-                    LogIfNewMessage("selectCount" + type, $"There were {selectedProjects.Count} projects selected randomly");
+                    LogIfNewMessage("selectCount" + typeKey, $"There were {selectedProjects.Count} projects selected randomly");
                 }
 
                 if (SemiRandomResearchMod.settings.allowOneHigherTechProject && randomProject != null && !selectedProjects.Contains(randomProject))
@@ -550,18 +521,21 @@ namespace CM_Semi_Random_Research
             selectedProjects.Shuffle();
             int selectedProjectsCount = selectedProjects.Count;
             selectedProjects = selectedProjects.OrderByDescending(x => partiallyCompleted.Contains(x)).Distinct().ToList();
-            if(selectedProjects.Count != selectedProjectsCount)
-                LogIfNewMessage("Distinct error" + type, $"There were {selectedProjects.Count} projects after distinct but {selectedProjectsCount} before.");
+            if (selectedProjects.Count != selectedProjectsCount)
+                LogIfNewMessage("Distinct error" + typeKey, $"There were {selectedProjects.Count} projects after distinct but {selectedProjectsCount} before.");
             return selectedProjects;
         }
 
-        public void SetCurrentProject(ResearchProjectDef newCurrentProject, KnowledgeCategoryDef type)
+        // ==============================================================================
+        // NEW STRING-BASED TRACKING
+        // ==============================================================================
+
+        public void SetCurrentProjectByKey(ResearchProjectDef newCurrentProject, string typeKey)
         {
-            string typeKey = type == null ? "null" : type.defName;
             loggedMessages.Clear();
-            currentProjects = currentProjects.Where(x => x.knowledgeCategory != type).ToList();
+            currentProjects = currentProjects.Where(x => GetCategoryKey(x) != typeKey).ToList();
             projectDefsCacheByType.Remove(typeKey);
-            if (newCurrentProject!=null)
+            if (newCurrentProject != null)
             {
                 currentProjects.Add(newCurrentProject);
                 Find.ResearchManager.SetCurrentProject(newCurrentProject);
@@ -570,80 +544,134 @@ namespace CM_Semi_Random_Research
                     currentAvailableProjects.Add(newCurrentProject);
 
                 if (SemiRandomResearchMod.settings.rerollAllEveryTime && !SemiRandomResearchMod.settings.allowSwitchingResearch)
-                    currentAvailableProjects = currentAvailableProjects.Where(projectDef => projectDef.knowledgeCategory != type || projectDef == newCurrentProject).ToList();
-
+                    currentAvailableProjects = currentAvailableProjects.Where(projectDef => GetCategoryKey(projectDef) != typeKey || projectDef == newCurrentProject).ToList();
             }
-            else if(Find.ResearchManager.GetProject(type) != null)
+            else
             {
-                Find.ResearchManager.StopProject(Find.ResearchManager.GetProject(type));
+                ResearchProjectDef active = null;
+                ResearchProjectDef standardActive = Find.ResearchManager.GetProject(null);
+                if (standardActive != null && GetCategoryKey(standardActive) == typeKey) active = standardActive;
+                foreach (var cat in DefDatabase<KnowledgeCategoryDef>.AllDefsListForReading)
+                {
+                    ResearchProjectDef catActive = Find.ResearchManager.GetProject(cat);
+                    if (catActive != null && GetCategoryKey(catActive) == typeKey) active = catActive;
+                }
+                if (active != null) Find.ResearchManager.StopProject(active);
             }
-            currentProjectDefsCacheByType[typeKey] = currentProjects.Where(x => x.knowledgeCategory == type).ToList();
+            currentProjectDefsCacheByType[typeKey] = currentProjects.Where(x => GetCategoryKey(x) == typeKey).ToList();
         }
 
-        public void ManageNotChosen(KnowledgeCategoryDef type)
+        public void ManageNotChosenByKey(string typeKey)
         {
-            if(SemiRandomResearchMod.settings.reofferAfterAmountOfRerolls == 0)
+            if (SemiRandomResearchMod.settings.reofferAfterAmountOfRerolls == 0)
             {
                 notChosenProjects.Clear();
             }
-            else 
+            else
             {
-                string key = type == null ? "null" : type.defName;
-                if (!currentRerollState.ContainsKey(key))
+                if (!currentRerollState.ContainsKey(typeKey))
                 {
-                    currentRerollState[key] = 0;
+                    currentRerollState[typeKey] = 0;
                 }
-                currentRerollState[key]++;
-                foreach (ResearchProjectDef rdef in currentAvailableProjects)
+                currentRerollState[typeKey]++;
+                foreach (ResearchProjectDef rdef in currentAvailableProjects.Where(x => GetCategoryKey(x) == typeKey))
                 {
                     if (!notChosenProjects.ContainsKey(rdef))
                     {
-                        notChosenProjects.Add(rdef, currentRerollState[key]);
+                        notChosenProjects.Add(rdef, currentRerollState[typeKey]);
                     }
-                    else 
+                    else
                     {
-                        notChosenProjects[rdef] = currentRerollState[key];
+                        notChosenProjects[rdef] = currentRerollState[typeKey];
                     }
                 }
-                notChosenProjects = notChosenProjects.Where(x => x.Value > currentRerollState[key] - SemiRandomResearchMod.settings.reofferAfterAmountOfRerolls).ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+                notChosenProjects = notChosenProjects.Where(x => x.Value > currentRerollState[typeKey] - SemiRandomResearchMod.settings.reofferAfterAmountOfRerolls).ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
             }
         }
 
-        public void SetRerolled(KnowledgeCategoryDef type, bool newValue)
+        public void SetRerolledByKey(string typeKey, bool newValue)
         {
-            string key = type == null ? "null" : type.defName;
-            if (!rerolled.ContainsKey(key))
+            if (!rerolled.ContainsKey(typeKey))
             {
-                rerolled.Add(key, newValue);
+                rerolled.Add(typeKey, newValue);
             }
-            else 
+            else
             {
-                rerolled[key] = newValue;
+                rerolled[typeKey] = newValue;
             }
         }
 
-        public bool CanReroll(KnowledgeCategoryDef type)
+        public bool CanRerollByKey(string typeKey)
         {
-            string key = type == null ? "null" : type.defName;
-
             return SemiRandomResearchMod.settings.allowManualReroll == ManualReroll.Always ||
-                (SemiRandomResearchMod.settings.allowManualReroll == ManualReroll.Once && (!rerolled.ContainsKey(key) || !rerolled[key]));
+                (SemiRandomResearchMod.settings.allowManualReroll == ManualReroll.Once && (!rerolled.ContainsKey(typeKey) || !rerolled[typeKey]));
         }
 
-        public void Reroll(KnowledgeCategoryDef type)
+        public void RerollByKey(string typeKey)
         {
-            // If there are no researches of that type rerolling wont change anything so lets the player should not spent the reroll
-            if (GetCurrentlyAvailableProjects().Any(x=>x.knowledgeCategory == type)) 
+            if (GetCurrentlyAvailableProjects().Any(x => GetCategoryKey(x) == typeKey))
             {
-                SetRerolled(type, true);
-                ManageNotChosen(type);
-                SetCurrentProject(null, type);
-                currentAvailableProjects = currentAvailableProjects.Where(x => x.knowledgeCategory != type).ToList();
-                additionalAvailableProjects = additionalAvailableProjects.Where(x => x.knowledgeCategory != type).ToHashSet();
+                SetRerolledByKey(typeKey, true);
+                ManageNotChosenByKey(typeKey);
+                SetCurrentProjectByKey(null, typeKey);
+                currentAvailableProjects = currentAvailableProjects.Where(x => GetCategoryKey(x) != typeKey).ToList();
+                additionalAvailableProjects = additionalAvailableProjects.Where(x => GetCategoryKey(x) != typeKey).ToHashSet();
                 GetCurrentlyAvailableProjects();
                 tickCounter = 0;
             }
         }
+
+        // ==============================================================================
+        // COMPATIBILITY WRAPPERS FOR UI BUTTONS
+        // These intercept calls from your UI and route them to the Pseudo-Categories
+        // ==============================================================================
+
+        public void SetCurrentProject(ResearchProjectDef newCurrentProject, KnowledgeCategoryDef type)
+        {
+            if (newCurrentProject != null)
+            {
+                SetCurrentProjectByKey(newCurrentProject, GetCategoryKey(newCurrentProject));
+            }
+            else
+            {
+                ResearchProjectDef active = Find.ResearchManager.GetProject(type);
+                if (active != null) SetCurrentProjectByKey(null, GetCategoryKey(active));
+            }
+        }
+
+        public void ManageNotChosen(KnowledgeCategoryDef type)
+        {
+            string key = type == null ? "Standard" : type.defName;
+            ManageNotChosenByKey(key);
+        }
+
+        public void SetRerolled(KnowledgeCategoryDef type, bool newValue)
+        {
+            string key = type == null ? "Standard" : type.defName;
+            SetRerolledByKey(key, newValue);
+        }
+
+        public bool CanReroll(KnowledgeCategoryDef type)
+        {
+            if (type == null) return CanRerollByKey("Standard") || CanRerollByKey("Gravship");
+            return CanRerollByKey(type.defName);
+        }
+
+        public void Reroll(KnowledgeCategoryDef type)
+        {
+            if (type == null)
+            {
+                RerollByKey("Standard");
+                RerollByKey("Gravship");
+                RerollByKey("Divinitech");
+            }
+            else
+            {
+                RerollByKey(type.defName);
+            }
+        }
+
+        // ==============================================================================
 
         public void SettingsChanged()
         {
@@ -659,7 +687,7 @@ namespace CM_Semi_Random_Research
 
         public void ConsiderProjectFinished(ResearchProjectDef def)
         {
-            if(def.IsDummyResearch())
+            if (def.IsDummyResearch())
             {
                 return;
             }
@@ -669,23 +697,23 @@ namespace CM_Semi_Random_Research
                 LogIfNewMessage("Consider Completed", def?.LabelCap);
             }
 
-            SetRerolled(def.knowledgeCategory, false);
+            string typeKey = GetCategoryKey(def);
+
+            SetRerolledByKey(typeKey, false);
             ForceAutoReseachCheckNextTick();
-            
+
             // Clear current project
-            if(currentProjects.Contains(def))
+            if (currentProjects.Contains(def))
             {
-                SetCurrentProject(null, def.knowledgeCategory);
+                SetCurrentProjectByKey(null, typeKey);
             }
 
             // Immediately handle reroll
-            if(SemiRandomResearchMod.settings.rerollAllEveryTime)
+            if (SemiRandomResearchMod.settings.rerollAllEveryTime)
             {
-                ManageNotChosen(def.knowledgeCategory);
-                currentAvailableProjects = currentAvailableProjects.Where(x => 
-                    x.knowledgeCategory != def.knowledgeCategory).ToList();
-                additionalAvailableProjects = additionalAvailableProjects.Where(x => 
-                    x.knowledgeCategory != def.knowledgeCategory).ToHashSet();
+                ManageNotChosenByKey(typeKey);
+                currentAvailableProjects = currentAvailableProjects.Where(x => GetCategoryKey(x) != typeKey).ToList();
+                additionalAvailableProjects = additionalAvailableProjects.Where(x => GetCategoryKey(x) != typeKey).ToHashSet();
                 GetCurrentlyAvailableProjects();
             }
         }
@@ -704,6 +732,5 @@ namespace CM_Semi_Random_Research
                 loggedMessages[key] = message;
             }
         }
-
     }
 }

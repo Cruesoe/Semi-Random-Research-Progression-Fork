@@ -33,6 +33,8 @@ namespace CM_Semi_Random_Research
 
         private static readonly Texture2D ResearchBarBGTex = SolidColorMaterials.NewSolidColorTexture(new Color(0.1f, 0.1f, 0.1f));
 
+        private static readonly Texture2D SettingsIcon = ContentFinder<Texture2D>.Get("UI/Settings", true);
+
         private static readonly Color ActiveProjectLabelColor = new ColorInt(219, 201, 126, 255).ToColor;
 
         private Dictionary<ResearchProjectDef, List<Pair<ResearchPrerequisitesUtility.UnlockedHeader, List<Def>>>> cachedUnlockedDefsGroupedByPrerequisites;
@@ -54,9 +56,8 @@ namespace CM_Semi_Random_Research
 
         private Dictionary<TechLevel, float> techLevelHeaderProgress = new Dictionary<TechLevel, float>();
 
-        // Check if anomaly exists and if the setting is enabled
-        // Lambda to refresh setting based on settings toggle
-        private Func<bool> AnomalyContentEnabled = () => (KnowledgeCategoryDefOf.Basic != null) && SemiRandomResearchMod.settings.experimentalAnomalySupport;
+        // Check if anomaly exists
+        private Func<bool> AnomalyContentEnabled = () => (KnowledgeCategoryDefOf.Basic != null);
 
         private bool ColonistsHaveResearchBench
         {
@@ -113,8 +114,22 @@ namespace CM_Semi_Random_Research
                         researchTracker.SetCurrentProject(null, def.knowledgeCategory);
                     }
                 }
-                selectedProject = researchTracker.CurrentProject.FirstOrFallback(null);
-                
+
+                ResearchProjectDef mainProject = researchTracker.CurrentProject.FirstOrDefault(p => ResearchTracker.GetCategoryKey(p) == "Standard");
+
+                if (mainProject == null)
+                {
+                    ResearchProjectDef vanillaProject = Find.ResearchManager.GetProject();
+                    if (vanillaProject != null && ResearchTracker.GetCategoryKey(vanillaProject) == "Standard")
+                    {
+                        mainProject = vanillaProject;
+                    }
+                }
+
+                selectedProject = mainProject
+                                  ?? researchTracker.CurrentProject.FirstOrDefault()
+                                  ?? currentAvailableProjects.FirstOrDefault();
+
                 // Use the same sorting logic as the reroll animation
                 animationOrder.Clear();
                 var groupedProjects = currentAvailableProjects
@@ -327,6 +342,23 @@ namespace CM_Semi_Random_Research
 
             DrawLeftColumn(leftRect);
             DrawRightColumn(rightRect);
+
+            // Global Settings Icon Button (Bottom Right)
+
+            float iconSize = 24f;
+            
+            Rect settingsBtnRect = new Rect(canvas.width - iconSize, canvas.height - iconSize, iconSize, iconSize);
+
+            if (Widgets.ButtonImage(settingsBtnRect, SettingsIcon))
+            {
+                SoundDefOf.Click.PlayOneShotOnCamera();
+                Mod ourMod = LoadedModManager.GetMod<SemiRandomResearchMod>();
+                Dialog_ModSettings dialog = new Dialog_ModSettings(ourMod);
+                Find.WindowStack.Add(dialog);
+            }
+
+            TooltipHandler.TipRegion(settingsBtnRect, "Open Semi-Random Research Settings");
+
         }
 
         private void DrawTechLevelProgress(Rect rect)
@@ -564,34 +596,36 @@ namespace CM_Semi_Random_Research
             bool hasActiveNonAnomalyResearch = false;
             bool hasActiveAnomalyResearchBasic = false;
             bool hasActiveAnomalyResearchAdvanced = false;
+            bool hasActiveGravshipResearch = false;
+
             ResearchProjectDef activeNonAnomalyProject = null;
             ResearchProjectDef activeAnomalyProjectBasic = null;
             ResearchProjectDef activeAnomalyProjectAdvanced = null;
+            ResearchProjectDef activeGravshipProject = null;
 
             if (researchTracker != null && researchTracker.CurrentProject != null && researchTracker.CurrentProject.Count > 0)
             {
-                // Get active normal research
-                activeNonAnomalyProject = researchTracker.CurrentProject.FirstOrDefault(p => p.knowledgeCategory == null);
+                activeNonAnomalyProject = researchTracker.CurrentProject.FirstOrDefault(p => ResearchTracker.GetCategoryKey(p) == "Standard");
                 hasActiveNonAnomalyResearch = activeNonAnomalyProject != null;
 
-                // Get active anomaly research
                 activeAnomalyProjectBasic = researchTracker.CurrentProject.FirstOrDefault(p => p.knowledgeCategory == KnowledgeCategoryDefOf.Basic);
                 hasActiveAnomalyResearchBasic = activeAnomalyProjectBasic != null;
 
                 activeAnomalyProjectAdvanced = researchTracker.CurrentProject.FirstOrDefault(p => p.knowledgeCategory == KnowledgeCategoryDefOf.Advanced);
                 hasActiveAnomalyResearchAdvanced = activeAnomalyProjectAdvanced != null;
+
+                activeGravshipProject = researchTracker.CurrentProject.FirstOrDefault(p => p.tab?.defName == "VGE_Gravtech" || p.tab?.defName == "VGE_GravShip");
+                hasActiveGravshipResearch = activeGravshipProject != null;
             }
 
-            // If no active research from the mod, check vanilla research
             if (!hasActiveNonAnomalyResearch && Find.ResearchManager.GetProject() != null &&
-                Find.ResearchManager.GetProject().knowledgeCategory == null)
+                ResearchTracker.GetCategoryKey(Find.ResearchManager.GetProject()) == "Standard")
             {
                 activeNonAnomalyProject = Find.ResearchManager.GetProject();
                 hasActiveNonAnomalyResearch = true;
             }
 
-
-            // Get anomaly projects (for later use)
+            // Available Projects Lists
             var anomalyProjectsBasic = AnomalyContentEnabled() ?
                 currentAvailableProjects.Where(p => p.knowledgeCategory == KnowledgeCategoryDefOf.Basic).ToList() :
                 new List<ResearchProjectDef>();
@@ -600,177 +634,179 @@ namespace CM_Semi_Random_Research
                 currentAvailableProjects.Where(p => p.knowledgeCategory == KnowledgeCategoryDefOf.Advanced).ToList() :
                 new List<ResearchProjectDef>();
 
-            // If we have active anomaly research, only show that
-            if (hasActiveAnomalyResearchBasic && anomalyProjectsBasic.Any())
-            {
-                anomalyProjectsBasic = new List<ResearchProjectDef> { activeAnomalyProjectBasic };
-            }
+            var gravshipProjects = currentAvailableProjects.Where(p => p.tab?.defName == "VGE_Gravtech" || p.tab?.defName == "VGE_GravShip").ToList();
 
-            if (hasActiveAnomalyResearchAdvanced && anomalyProjectsAdvanced.Any())
-            {
-                anomalyProjectsAdvanced = new List<ResearchProjectDef> { activeAnomalyProjectAdvanced };
-            }
+            // REMOVE active projects from available lists so they don't draw twice
+            if (hasActiveAnomalyResearchBasic) anomalyProjectsBasic.Remove(activeAnomalyProjectBasic);
+            if (hasActiveAnomalyResearchAdvanced) anomalyProjectsAdvanced.Remove(activeAnomalyProjectAdvanced);
+            if (hasActiveGravshipResearch) gravshipProjects.Remove(activeGravshipProject);
 
-            // Check if we have anomaly projects to display
             bool hasAnomalyToShowBasic = anomalyProjectsBasic.Any();
             bool hasAnomalyToShowAdvanced = anomalyProjectsAdvanced.Any();
+            bool hasGravshipToShow = gravshipProjects.Any();
 
-            // Selected project name and tech levels - only show if not actively researching
-            if (!hasActiveNonAnomalyResearch)
-            {
-                Text.Font = GameFont.Medium;
-                GenUI.SetLabelAlign(TextAnchor.MiddleLeft);
+            // ALWAYS draw the top faction tech info
+            Text.Font = GameFont.Medium;
+            GenUI.SetLabelAlign(TextAnchor.MiddleLeft);
 
-                // Main label rect (left side)
-                float labelWidth = position.width * 0.4f;
-                Rect mainLabelRect = new Rect(0f, currentY, labelWidth, mainLabelHeight);
-                Widgets.LabelCacheHeight(ref mainLabelRect, "CM_Semi_Random_Research_Available_Projects".Translate());
+            // Increased from 0.4f to 0.5f to prevent text wrapping
+            float labelWidth = position.width * 0.5f;
+            Rect mainLabelRect = new Rect(0f, currentY, labelWidth, mainLabelHeight);
+            Widgets.LabelCacheHeight(ref mainLabelRect, "Currently researching");
 
-                // Tech levels info (right side)
-                Text.Font = GameFont.Small;
-                float techInfoX = labelWidth + 20f;
-                float techInfoWidth = position.width - techInfoX;
+            Text.Font = GameFont.Small;
+            Text.Font = GameFont.Small;
+            float techInfoX = labelWidth + 10f; // Tucked slightly closer to make room
+            float techInfoWidth = position.width - techInfoX; 
 
-                // Colony tech level
-                TechLevel colonyTech = Faction.OfPlayer.def.techLevel;
-                Rect colonyTechRect = new Rect(techInfoX, currentY, techInfoWidth * 0.5f, mainLabelHeight);
-                DrawTechLevelText(colonyTechRect, "Faction: ", colonyTech);
+            TechLevel colonyTech = Faction.OfPlayer.def.techLevel;
+            Rect colonyTechRect = new Rect(techInfoX, currentY, techInfoWidth * 0.5f, mainLabelHeight);
 
-                // World tech level
-                TechLevel worldTech = Find.World.worldObjects.Settlements
-                    .Where(s => s.Faction != null && !s.Faction.IsPlayer)
-                    .Select(s => s.Faction.def.techLevel)
-                    .DefaultIfEmpty(TechLevel.Undefined)
-                    .Max();
-                Rect worldTechRect = new Rect(techInfoX + techInfoWidth * 0.5f, currentY, techInfoWidth * 0.5f, mainLabelHeight);
-                DrawTechLevelText(worldTechRect, "World: ", worldTech);
+            DrawTechLevelText(colonyTechRect, "Faction: ", colonyTech);
 
-                GenUI.ResetLabelAlign();
-                currentY += mainLabelHeight + 4f;
-            }
+            TechLevel worldTech = Find.World.worldObjects.Settlements
+                .Where(s => s.Faction != null && !s.Faction.IsPlayer)
+                .Select(s => s.Faction.def.techLevel)
+                .DefaultIfEmpty(TechLevel.Undefined)
+                .Max();
+            Rect worldTechRect = new Rect(techInfoX + techInfoWidth * 0.5f, currentY, techInfoWidth * 0.5f, mainLabelHeight);
+            DrawTechLevelText(worldTechRect, "World: ", worldTech);
 
-            // If we have an active non-anomaly research project, show the research stats at the top
-            if (hasActiveNonAnomalyResearch)
-            {
-                // Calculate research rate stats section dimensions - adjust height when anomaly research is present
-                float rateStatsHeight = 300f; // Fixed height regardless of anomaly presence
-                float rateStatsPadding = 30f;
+            GenUI.ResetLabelAlign();
+            currentY += mainLabelHeight + 4f;
 
-                // Create a background for the active research section
-                Rect activeResearchRect = new Rect(0f, currentY, position.width, rateStatsHeight);
-
-                // Draw active research header
-                Text.Font = GameFont.Medium;
-                Text.Anchor = TextAnchor.MiddleLeft;
-                GUI.color = Color.white;
-                Rect activeHeaderRect = new Rect(activeResearchRect.x + 10f, currentY + 6f, activeResearchRect.width - 20f, 30f);
-                Widgets.Label(activeHeaderRect, "Currently Researching");
-                Text.Font = GameFont.Small;
-
-                // Draw research rate UI
-                Rect rateStatsRect = new Rect(
-                    activeResearchRect.x + 10f,
-                    activeHeaderRect.yMax + 4f,
-                    activeResearchRect.width - 20f,
-                    activeResearchRect.height - activeHeaderRect.height - 10f
-                );
-                DrawResearchRateUI(rateStatsRect, activeNonAnomalyProject);
-
-                // Update current Y position
-                currentY += rateStatsHeight + rateStatsPadding;
-            }
-
-            // Adjust the scroll view to account for the header and footer
+            // ==========================================
+            // START SCROLL VIEW
+            // ==========================================
             Rect scrollOutRect = new Rect(0f, currentY, position.width, position.height - (totalFooterHeight + currentY));
             Rect scrollViewRect = new Rect(0f, 0f, scrollOutRect.width - 20f, leftScrollViewHeight);
-
             Widgets.BeginScrollView(scrollOutRect, ref leftScrollPosition, scrollViewRect);
-
             currentY = 0f;
 
-            // Only show non-anomaly research options when not actively researching a normal project
-            if (!hasActiveNonAnomalyResearch)
+            // ==========================================
+            // THE DASHBOARD (All Active Projects)
+            // ==========================================
+            List<ResearchProjectDef> activeProjects = new List<ResearchProjectDef>();
+            if (hasActiveNonAnomalyResearch) activeProjects.Add(activeNonAnomalyProject);
+            if (hasActiveAnomalyResearchBasic) activeProjects.Add(activeAnomalyProjectBasic);
+            if (hasActiveAnomalyResearchAdvanced) activeProjects.Add(activeAnomalyProjectAdvanced);
+            if (hasActiveGravshipResearch) activeProjects.Add(activeGravshipProject);
+
+            if (activeProjects.Count > 0)
             {
-                // Group non-anomaly projects by tech level
-                var groupedProjects = currentAvailableProjects
-                    .Where(p => p.knowledgeCategory == null) // Only non-anomaly projects
-                    .GroupBy(proj => proj.techLevel)
-                    .OrderBy(group => (int)group.Key);
-
-                bool isFirst = true;
-                foreach (var techGroup in groupedProjects)
+                foreach (var activeProj in activeProjects)
                 {
-                    if (!techGroup.Any()) continue;
+                    bool isExpanded = (selectedProject == activeProj);
 
-                    // Add gap before tech level header (except for first one)
-                    if (!isFirst)
-                    {
-                        currentY += gapHeight;
-                    }
-                    isFirst = false;
+                    float baseHeight = 48f;
+                    float expandedHeight = baseHeight + 16f + 38f;
+                    if (SemiRandomResearchMod.settings.showResearchRateGraph) expandedHeight += 16f + 140f;
 
-                    // Get animation progress for this tech level
-                    float headerAnimProgress = 1f;
-                    if (techLevelHeaderProgress.TryGetValue(techGroup.Key, out float progress))
-                        headerAnimProgress = progress;
+                    float cardHeight = isExpanded ? expandedHeight : baseHeight;
 
-                    // Skip drawing if not yet visible at all
-                    if (headerAnimProgress <= 0.01f)
-                        continue;
+                    Rect rateStatsRect = new Rect(0f, currentY, scrollViewRect.width, cardHeight);
+                    DrawResearchRateUI(rateStatsRect, activeProj, isExpanded);
 
-                    // Remember current color and apply fade
-                    Color originalColor = GUI.color;
-                    GUI.color = new Color(GUI.color.r, GUI.color.g, GUI.color.b, headerAnimProgress);
+                    currentY += cardHeight + 12f;
+                }
+            }
+            else
+            {
+                // Draw a sleek "None" placeholder when idle
+                Text.Font = GameFont.Small;
+                Text.Anchor = TextAnchor.MiddleCenter;
+                GUI.color = Color.grey;
 
-                    // Draw tech level header
-                    Text.Font = GameFont.Small;
-                    Color techColor = GetTechLevelColor(techGroup.Key);
-                    techColor.a *= headerAnimProgress; // Apply animation alpha
-                    GUI.color = techColor;
+                float noneHeight = 48f; // Same height as a base card
+                Rect noneRect = new Rect(0f, currentY, scrollViewRect.width, noneHeight);
 
-                    Rect headerRect = new Rect(0f, currentY, scrollViewRect.width, techLevelHeaderHeight);
-                    Text.Anchor = TextAnchor.MiddleLeft;
-                    Widgets.Label(headerRect, techGroup.Key.ToStringHuman().CapitalizeFirst());
-                    Text.Anchor = TextAnchor.UpperLeft;
-                    GUI.color = originalColor;
-                    currentY += techLevelHeaderHeight;
+                // Very subtle dark box to indicate an "empty slot"
+                Widgets.DrawBoxSolid(noneRect, new Color(0.1f, 0.1f, 0.1f, 0.15f));
+                Widgets.Label(noneRect, "None");
 
-                    // Draw projects for this tech level, sorted by cost
-                    foreach (ResearchProjectDef projectDef in techGroup.OrderBy(p => p.CostApparent))
-                    {
-                        Rect buttonRect = new Rect(0f, currentY, scrollViewRect.width, buttonHeight);
-                        DrawResearchButton(ref buttonRect, projectDef);
-                        currentY += buttonHeight + researchProjectGapHeight;
-                    }
+                Text.Anchor = TextAnchor.UpperLeft;
+                GUI.color = Color.white;
+
+                currentY += noneHeight + 12f;
+            }
+
+            // ALWAYS draw a divider separating the dashboard from the queue
+            currentY += 8f;
+            GUI.color = new Color(0.4f, 0.4f, 0.4f, 0.4f);
+            Widgets.DrawLineHorizontal(0f, currentY, scrollViewRect.width);
+            GUI.color = Color.white;
+            currentY += 16f;
+
+            // ==========================================
+            // AVAILABLE STANDARD PROJECTS
+            // ==========================================
+            var groupedProjects = currentAvailableProjects
+                .Where(p => ResearchTracker.GetCategoryKey(p) == "Standard" && p != activeNonAnomalyProject)
+                .GroupBy(proj => proj.techLevel)
+                .OrderBy(group => (int)group.Key);
+
+            // Check if there is anything at all left to research
+            bool hasStandardToShow = groupedProjects.Any(g => g.Any());
+
+            if (hasStandardToShow || hasAnomalyToShowBasic || hasAnomalyToShowAdvanced || hasGravshipToShow)
+            {
+                Text.Font = GameFont.Medium;
+                GUI.color = Color.white;
+                Rect availableHeaderRect = new Rect(0f, currentY, scrollViewRect.width, 30f);
+                Widgets.Label(availableHeaderRect, "CM_Semi_Random_Research_Available_Projects".Translate());
+                currentY += 34f;
+            }
+
+            bool isFirst = true;
+            foreach (var techGroup in groupedProjects)
+            {
+                if (!techGroup.Any()) continue;
+
+                if (!isFirst) currentY += gapHeight;
+                isFirst = false;
+
+                float headerAnimProgress = 1f;
+                if (techLevelHeaderProgress.TryGetValue(techGroup.Key, out float progress))
+                    headerAnimProgress = progress;
+
+                if (headerAnimProgress <= 0.01f) continue;
+
+                Color originalColor = GUI.color;
+                GUI.color = new Color(GUI.color.r, GUI.color.g, GUI.color.b, headerAnimProgress);
+
+                Text.Font = GameFont.Small;
+                Color techColor = GetTechLevelColor(techGroup.Key);
+                techColor.a *= headerAnimProgress;
+                GUI.color = techColor;
+
+                Rect headerRect = new Rect(0f, currentY, scrollViewRect.width, techLevelHeaderHeight);
+                Text.Anchor = TextAnchor.MiddleLeft;
+                Widgets.Label(headerRect, techGroup.Key.ToStringHuman().CapitalizeFirst());
+                Text.Anchor = TextAnchor.UpperLeft;
+                GUI.color = originalColor;
+                currentY += techLevelHeaderHeight;
+
+                foreach (ResearchProjectDef projectDef in techGroup.OrderBy(p => p.CostApparent))
+                {
+                    Rect buttonRect = new Rect(0f, currentY, scrollViewRect.width, buttonHeight);
+                    DrawResearchButton(ref buttonRect, projectDef);
+                    currentY += buttonHeight + researchProjectGapHeight;
                 }
             }
 
-            // Handle Anomaly Research Section - show at the bottom (if not on research graph screen)
-            // OR after the graph when on research screen
-            //  string anomaly_name;
-            if (AnomalyContentEnabled() && (hasAnomalyToShowBasic || hasAnomalyToShowAdvanced))
+            // ==========================================
+            // AVAILABLE ANOMALY / GRAVSHIP PROJECTS
+            // ==========================================
+            if ((AnomalyContentEnabled() && (hasAnomalyToShowBasic || hasAnomalyToShowAdvanced)) || hasGravshipToShow)
             {
-                // Get anomaly research name from the research tab description.
-                // This allows us to support mods like ambiguous anomaly
-
-                // Only show anomaly section if there are any anomaly projects
-                // Add divider before anomaly section if we're not starting from the top
-                // Create a smaller header for anomaly research - like tech level headers
                 if (currentY > 0)
                 {
-                    // Add 60px extra space before the anomaly section when actively researching
-                    if (hasActiveNonAnomalyResearch)
-                    {
-                        currentY += 300f; // Increased from 60f to 120f for more space
-                    }
-
                     currentY += gapHeight;
                     GUI.color = new Color(0.4f, 0.4f, 0.4f, 0.4f);
                     Widgets.DrawLineHorizontal(0f, currentY, scrollViewRect.width);
                     GUI.color = Color.white;
                     currentY += gapHeight;
                 }
-
             }
 
             if (AnomalyContentEnabled() && hasAnomalyToShowBasic)
@@ -778,14 +814,12 @@ namespace CM_Semi_Random_Research
                 Text.Font = GameFont.Small;
                 Text.Anchor = TextAnchor.MiddleLeft;
                 Rect anomalyHeaderRect = new Rect(0f, currentY, scrollViewRect.width, techLevelHeaderHeight);
-                
-                Color anomalyColor = new Color(0.65f, 0.35f, 0.5f); // Less saturated light purple
-                GUI.color = anomalyColor;
-                Widgets.Label(anomalyHeaderRect, "Dark research");
+
+                GUI.color = new Color(0.65f, 0.35f, 0.5f);
+                Widgets.Label(anomalyHeaderRect, "Available Dark research");
                 GUI.color = Color.white;
                 currentY += techLevelHeaderHeight;
-                
-                // Show all anomaly projects (or just the active one)
+
                 foreach (ResearchProjectDef projectDef in anomalyProjectsBasic.OrderBy(p => p.CostApparent))
                 {
                     Rect buttonRect = new Rect(0f, currentY, scrollViewRect.width, buttonHeight);
@@ -796,25 +830,39 @@ namespace CM_Semi_Random_Research
 
             if (AnomalyContentEnabled() && hasAnomalyToShowAdvanced)
             {
-                if (hasActiveAnomalyResearchBasic)
-                {
-                    currentY += gapHeight;
-                }
-                
-                // Create a smaller header for anomaly research - like tech level headers
+                if (hasAnomalyToShowBasic) currentY += gapHeight;
+
                 Text.Font = GameFont.Small;
                 Text.Anchor = TextAnchor.MiddleLeft;
                 Rect anomalyHeaderRect = new Rect(0f, currentY, scrollViewRect.width, techLevelHeaderHeight);
-                
-                // Use less saturated purple color for anomaly header
-                Color anomalyColor = new Color(0.45f, 0.35f, 0.5f); // Less saturated dark purple
-                GUI.color = anomalyColor;
-                Widgets.Label(anomalyHeaderRect, "Advanced dark research");
+
+                GUI.color = new Color(0.45f, 0.35f, 0.5f);
+                Widgets.Label(anomalyHeaderRect, "Available Advanced dark research");
                 GUI.color = Color.white;
                 currentY += techLevelHeaderHeight;
-                
-                // Show all anomaly projects (or just the active one)
+
                 foreach (ResearchProjectDef projectDef in anomalyProjectsAdvanced.OrderBy(p => p.CostApparent))
+                {
+                    Rect buttonRect = new Rect(0f, currentY, scrollViewRect.width, buttonHeight);
+                    DrawResearchButton(ref buttonRect, projectDef);
+                    currentY += buttonHeight + researchProjectGapHeight;
+                }
+            }
+
+            if (hasGravshipToShow)
+            {
+                if (hasAnomalyToShowBasic || hasAnomalyToShowAdvanced) currentY += gapHeight;
+
+                Text.Font = GameFont.Small;
+                Text.Anchor = TextAnchor.MiddleLeft;
+                Rect gravshipHeaderRect = new Rect(0f, currentY, scrollViewRect.width, techLevelHeaderHeight);
+
+                GUI.color = new Color(0.2f, 0.6f, 0.8f);
+                Widgets.Label(gravshipHeaderRect, "Available Gravtech research");
+                GUI.color = Color.white;
+                currentY += techLevelHeaderHeight;
+
+                foreach (ResearchProjectDef projectDef in gravshipProjects.OrderBy(p => p.CostApparent))
                 {
                     Rect buttonRect = new Rect(0f, currentY, scrollViewRect.width, buttonHeight);
                     DrawResearchButton(ref buttonRect, projectDef);
@@ -824,95 +872,41 @@ namespace CM_Semi_Random_Research
 
             leftScrollViewHeight = currentY;
             Widgets.EndScrollView();
-            
-            //// Animation skip button
-            //if (lastRerollTime > 0f)
-            //{
-            //    float skipButtonHeight = 32f;
-            //    float skipButtonWidth = 120f;
-            //    float skipButtonPadding = 6f;
-                
-            //    Rect skipButtonRect = new Rect(
-            //        scrollOutRect.x + scrollOutRect.width - skipButtonWidth - skipButtonPadding,
-            //        scrollOutRect.y + skipButtonPadding,
-            //        skipButtonWidth,
-            //        skipButtonHeight
-            //    );
-                
-            //    // Draw semi-transparent background
-            //    Widgets.DrawBoxSolid(skipButtonRect.ExpandedBy(2f), new Color(0.1f, 0.1f, 0.1f, 0.6f));
-                
-            //    if (Widgets.ButtonText(skipButtonRect, "Skip Animation"))
-            //    {
-            //        SoundDefOf.Click.PlayOneShotOnCamera();
-            //        SkipAnimation();
-            //    }
-            //}
 
-            // Draw footer controls with improved spacing
+            // ==========================================
+            // FOOTER CONTROLS
+            // ==========================================
             if (researchTracker != null)
             {
-                // Create the footer area with top padding
-                Rect footerContainerRect = new Rect(
-                    0f, 
-                    position.height - totalFooterHeight, 
-                    position.width,
-                    totalFooterHeight
-                );
+                Rect footerContainerRect = new Rect(0f, position.height - totalFooterHeight, position.width, totalFooterHeight);
 
-                // Draw a subtle separator line above the footer
                 GUI.color = new Color(0.4f, 0.4f, 0.4f, 0.6f);
                 Widgets.DrawLineHorizontal(footerContainerRect.x, footerContainerRect.y, footerContainerRect.width);
                 GUI.color = Color.white;
 
-                // In the footer section, change from a fixed 3-button layout to a dynamic layout
-                // We need to check if we need to show a cancel button
-                bool showCancelButton = SemiRandomResearchMod.settings.allowSwitchingResearch && 
-                    (hasActiveNonAnomalyResearch || hasActiveAnomalyResearchBasic || hasActiveAnomalyResearchAdvanced);
-
-                // Calculate total buttons and adjust layout
-                int buttonCount = 3; // Default: Research Tree, Reroll, Research
-                if (showCancelButton) buttonCount = 4; // Add Cancel button
-
-                // Calculate total width for buttons
+                int buttonCount = 3;
                 float totalButtonsWidth = (footerButtonWidth * buttonCount) + (buttonSpacing * (buttonCount - 1));
                 float startX = (footerContainerRect.width - totalButtonsWidth) / 2;
 
-                // Position buttons
-                Rect researchTreeButtonRect = new Rect(
-                    footerContainerRect.x + startX,
-                    footerContainerRect.y + footerPaddingTop,
-                    footerButtonWidth,
-                    footerHeight
-                );
+                Rect researchTreeButtonRect = new Rect(footerContainerRect.x + startX, footerContainerRect.y + footerPaddingTop, footerButtonWidth, footerHeight);
+                Rect rerollButtonRect = new Rect(researchTreeButtonRect.xMax + buttonSpacing, footerContainerRect.y + footerPaddingTop, footerButtonWidth, footerHeight);
+                Rect researchButtonRect = new Rect(rerollButtonRect.xMax + buttonSpacing, footerContainerRect.y + footerPaddingTop, footerButtonWidth, footerHeight);
 
-                // Position for the cancel button (if shown)
-                Rect cancelButtonRect = new Rect(
-                    researchTreeButtonRect.xMax + buttonSpacing,
-                    footerContainerRect.y + footerPaddingTop,
-                    footerButtonWidth,
-                    footerHeight
-                );
+                bool nodeInstalled = ModLister.GetActiveModWithIdentifier("ferny.noderesearch") != null;
+                string treeButtonText = nodeInstalled ? "Node Research" : "Research Tree";
 
-                // Reposition other buttons based on whether cancel is shown
-                Rect rerollButtonRect = new Rect(
-                    showCancelButton ? cancelButtonRect.xMax + buttonSpacing : researchTreeButtonRect.xMax + buttonSpacing,
-                    footerContainerRect.y + footerPaddingTop,
-                    footerButtonWidth,
-                    footerHeight
-                );
-
-                Rect researchButtonRect = new Rect(
-                    rerollButtonRect.xMax + buttonSpacing,
-                    rerollButtonRect.y,
-                    footerButtonWidth,
-                    footerHeight
-                );
-
-                // Draw research tree button (unchanged)
-                if (Widgets.ButtonText(researchTreeButtonRect, "Research Tree"))
+                if (Widgets.ButtonText(researchTreeButtonRect, treeButtonText))
                 {
                     SoundDefOf.ResearchStart.PlayOneShotOnCamera();
+
+                    if (nodeInstalled)
+                    {
+                        SemiRandomResearchMod.settings.usingNodeResearch = true;
+                        LoadedModManager.GetMod<SemiRandomResearchMod>().WriteSettings();
+                        SemiRandomResearchMod.UpdateShowResearchButton();
+                        Messages.Message("Control passed to Node Research. Free selection enabled.", MessageTypeDefOf.NeutralEvent, false);
+                    }
+
                     MainTabWindow currentWindow = Find.WindowStack.WindowOfType<MainTabWindow>();
                     MainTabWindow newWindow = MainButtonDefOf.Research.TabWindow;
                     if (currentWindow != null && newWindow != null)
@@ -923,36 +917,15 @@ namespace CM_Semi_Random_Research
                     }
                 }
 
-                // Draw cancel button if needed
-                if (showCancelButton)
+                if (nodeInstalled)
                 {
-                    ResearchProjectDef projectToCancel;
-                    // Determine which project would be canceled
-                    if (hasActiveNonAnomalyResearch)
-                    {
-                        projectToCancel = activeNonAnomalyProject;
-                    }
-                    else if (hasActiveAnomalyResearchBasic)
-                    {
-                        projectToCancel = activeAnomalyProjectBasic;
-                    }
-                    else
-                    {
-                        projectToCancel = activeAnomalyProjectAdvanced;
-                    }
-                    KnowledgeCategoryDef categoryToCancel = projectToCancel?.knowledgeCategory;
-                    
-                    if (Widgets.ButtonText(cancelButtonRect, "Cancel Research"))
-                    {
-                        SoundDefOf.Click.PlayOneShotOnCamera();
-                        // This just cancels the research without rerolling
-                        researchTracker.SetCurrentProject(null, categoryToCancel);
-                        // Force refresh the list
-                        researchTracker.ForceAutoReseachCheckNextTick();
-                    }
+                    TooltipHandler.TipRegion(researchTreeButtonRect, "Switch to Node Research (Passes control allowing free selection).");
+                }
+                else
+                {
+                    TooltipHandler.TipRegion(researchTreeButtonRect, "View the standard Research Tree (View only).");
                 }
 
-                // Draw reroll button (existing reroll button code)
                 bool canReroll = researchTracker.CanReroll(rerollButtonType);
                 string rerollText = canReroll ? "Reroll" : "No rerolls";
 
@@ -976,11 +949,10 @@ namespace CM_Semi_Random_Research
                     GUI.color = Color.white;
                 }
 
-                // Draw research button - always visible but with different states
-                string researchButtonText = "Research";
+                string researchButtonText = "Start Research";
+
                 if (selectedProject == null)
                 {
-                    // No project selected
                     GUI.color = Color.grey;
                     Widgets.DrawAtlas(researchButtonRect, Widgets.ButtonSubtleAtlas);
                     Text.Anchor = TextAnchor.MiddleCenter;
@@ -993,18 +965,18 @@ namespace CM_Semi_Random_Research
                     Text.Anchor = TextAnchor.MiddleCenter;
                     Widgets.Label(researchButtonRect, "Finished");
                 }
-                else if (selectedProject == Find.ResearchManager.GetProject(selectedProject?.knowledgeCategory))
+                else if (researchTracker != null && researchTracker.CurrentProject.Contains(selectedProject))
                 {
                     GUI.color = ActiveProjectLabelColor;
                     Widgets.DrawAtlas(researchButtonRect, Widgets.ButtonSubtleAtlas);
                     Text.Anchor = TextAnchor.MiddleCenter;
                     Widgets.Label(researchButtonRect, "In Progress");
                 }
-                else if (selectedProject.CanStartNow && 
-                    (Find.ResearchManager.GetProject(selectedProject.knowledgeCategory) == null || 
-                    SemiRandomResearchMod.settings.allowSwitchingResearch))
+                else if (selectedProject.CanStartNow &&
+                         (Find.ResearchManager.GetProject(selectedProject?.knowledgeCategory) == null ||
+                         ResearchTracker.GetCategoryKey(selectedProject) == "Gravship" ||
+                         SemiRandomResearchMod.settings.allowSwitchingResearch))
                 {
-                    // Can start research
                     if (Widgets.ButtonText(researchButtonRect, researchButtonText))
                     {
                         SoundDefOf.ResearchStart.PlayOneShotOnCamera();
@@ -1019,18 +991,15 @@ namespace CM_Semi_Random_Research
                 }
                 else
                 {
-                    // Can't start research
                     GUI.color = Color.grey;
                     Widgets.DrawAtlas(researchButtonRect, Widgets.ButtonSubtleAtlas);
                     Text.Anchor = TextAnchor.MiddleCenter;
                     Widgets.Label(researchButtonRect, "Locked");
                 }
 
-                // Reset text anchor and color
                 Text.Anchor = TextAnchor.UpperLeft;
                 GUI.color = Color.white;
             }
-
             GUI.EndGroup();
         }
 
@@ -1140,7 +1109,17 @@ namespace CM_Semi_Random_Research
 
             // Set colors - use the same color for border and separators
             Color techColor = GetTechLevelColor(projectDef.techLevel);
-            
+
+            if (projectDef.knowledgeCategory != null)
+            {
+                if (projectDef.knowledgeCategory == KnowledgeCategoryDefOf.Basic)
+                    techColor = new Color(0.65f, 0.35f, 0.5f); // Basic Anomaly Purple
+                else if (projectDef.knowledgeCategory == KnowledgeCategoryDefOf.Advanced)
+                    techColor = new Color(0.45f, 0.35f, 0.5f); // Advanced Anomaly Purple
+                else if (projectDef.tab?.defName == "VGE_Gravtech" || projectDef.tab?.defName == "VGE_GravShip")
+                    techColor = new Color(0.2f, 0.6f, 0.8f); // Gravtech Blue
+            }
+
             // Modified background color - brighter on hover
             Color backgroundColor = isMouseOver 
                 ? Color.Lerp(TexUI.AvailResearchColor, techColor, 0.4f)  
@@ -1156,10 +1135,12 @@ namespace CM_Semi_Random_Research
             // Use the same borderColor for separators to maintain consistency
             Color separatorColor = borderColor;
 
-            // Check if this project is currently active and we're in a state where we can cancel
-            bool isActive = projectDef == Find.ResearchManager.GetProject(projectDef.knowledgeCategory);
+            // Check if this project is active in tracker
+            ResearchTracker tracker = Current.Game.World.GetComponent<ResearchTracker>();
+            bool isActive = tracker != null && tracker.CurrentProject.Contains(projectDef);
+
             bool canCancel = SemiRandomResearchMod.settings.allowSwitchingResearch && isActive;
-            
+
             if (canCancel)
             {
                 // Add a small cancel button to the top-right corner of the research card
@@ -1218,10 +1199,9 @@ namespace CM_Semi_Random_Research
             }
 
             // Draw progress bar for smaller cards
-                        float progressFraction = 0f;
+            float progressFraction = 0f;
             if (projectDef.CostApparent > 0f)
             {
-
                 float currentProg = projectDef.ProgressApparent;
                 if (currentProg <= 0f)
                 {
@@ -1237,21 +1217,36 @@ namespace CM_Semi_Random_Research
             if (progressFraction > 0f)
             {
                 Rect progressRect = new Rect(drawRect.x, drawRect.y, drawRect.width * progressFraction, drawRect.height);
-                Color progressColor = techColor;
-                progressColor.a = (isActive ? 0.6f : 0.4f) * animProgress;
+
+                // Mix the tech color with a tiny bit of white so the filled portion pops!
+                Color progressColor = Color.Lerp(techColor, Color.white, 0.15f);
+                progressColor.a = (isActive ? 0.6f : 0.45f) * animProgress;
+
                 Widgets.DrawBoxSolid(progressRect, progressColor);
             }
-
-
-            // Ensure border color has correct alpha
-            borderColor.a *= animProgress;
             
-            // Draw border manually with tech color
-            Widgets.DrawLine(new Vector2(drawRect.x, drawRect.y), new Vector2(drawRect.xMax, drawRect.y), borderColor, borderWidth);
-            Widgets.DrawLine(new Vector2(drawRect.x, drawRect.yMax), new Vector2(drawRect.xMax, drawRect.yMax), borderColor, borderWidth);
-            Widgets.DrawLine(new Vector2(drawRect.x, drawRect.y), new Vector2(drawRect.x, drawRect.yMax), borderColor, borderWidth);
-            Widgets.DrawLine(new Vector2(drawRect.xMax, drawRect.y), new Vector2(drawRect.xMax, drawRect.yMax), borderColor, borderWidth);
-            
+            // Ensure border color uses techColor directly and has correct alpha
+            Color cardBorderColor = techColor;
+            if (isActive)
+            {
+                cardBorderColor = Color.Lerp(techColor, Color.white, 0.5f); // Bright native color for active
+            }
+            else if (selectedProject == projectDef)
+            {
+                cardBorderColor = Color.Lerp(techColor, Color.white, 0.3f); // Semi-bright for selected
+            }
+            else if (isMouseOver)
+            {
+                cardBorderColor = Color.Lerp(techColor, Color.white, 0.2f);
+            }
+            cardBorderColor.a *= animProgress;
+
+            // Draw border manually with correct techColor
+            Widgets.DrawLine(new Vector2(drawRect.x, drawRect.y), new Vector2(drawRect.xMax, drawRect.y), cardBorderColor, borderWidth);
+            Widgets.DrawLine(new Vector2(drawRect.x, drawRect.yMax), new Vector2(drawRect.xMax, drawRect.yMax), cardBorderColor, borderWidth);
+            Widgets.DrawLine(new Vector2(drawRect.x, drawRect.y), new Vector2(drawRect.x, drawRect.yMax), cardBorderColor, borderWidth);
+            Widgets.DrawLine(new Vector2(drawRect.xMax, drawRect.y), new Vector2(drawRect.xMax, drawRect.yMax), cardBorderColor, borderWidth);
+
             // Draw icon
             Def firstUnlockable = GetFirstUnlockable(projectDef);
             try
@@ -1268,44 +1263,77 @@ namespace CM_Semi_Random_Research
 
             // Draw separators with the same color as the border
             separatorColor.a *= animProgress;
-            
+
+            // Draw separators using techColor
+            Color lineSeparatorColor = techColor;
+            lineSeparatorColor.a *= animProgress;
+
             // Draw vertical separator lines with proper alpha
             Widgets.DrawLine(
-                new Vector2(firstSeparator.x, firstSeparator.y), 
+                new Vector2(firstSeparator.x, firstSeparator.y),
                 new Vector2(firstSeparator.x, firstSeparator.yMax),
-                separatorColor,
+                lineSeparatorColor,
                 separatorWidth
             );
-            
+
             Widgets.DrawLine(
-                new Vector2(secondSeparator.x, secondSeparator.y), 
-                new Vector2(secondSeparator.x, secondSeparator.yMax), 
-                separatorColor, 
+                new Vector2(secondSeparator.x, secondSeparator.y),
+                new Vector2(secondSeparator.x, secondSeparator.yMax),
+                lineSeparatorColor,
                 separatorWidth
             );
-            
-            //Widgets.DrawLine(
-            //    new Vector2(thirdSeparator.x, thirdSeparator.y), 
-            //    new Vector2(thirdSeparator.x, thirdSeparator.yMax), 
-            //    separatorColor, 
-            //    separatorWidth
-            //);
-            
+
             // Draw text elements
             Color usedTextColor = isActive ? ActiveProjectLabelColor : textColor;
-            
+
             // Make text brighter on hover
             if (isMouseOver && !isActive)
             {
                 usedTextColor = Color.white;  // Pure white for best visibility
                 usedTextColor.a *= animProgress;
             }
-            GUI.color = usedTextColor;
-            
-            // Draw project name
-            Text.Anchor = TextAnchor.MiddleLeft;
-            Widgets.Label(nameRect, projectDef.LabelCap);
-            
+
+            // --- NODE RESEARCH TECH INJECTIONS ---
+            bool isFoundation = SemiRandomResearchUtility.IsNodeFoundationTech(projectDef);
+            bool isEmergence = SemiRandomResearchUtility.IsNodeEmergenceTech(projectDef);
+
+            if (isFoundation || isEmergence)
+            {
+
+                Rect topTextRect = new Rect(nameRect.x, nameRect.y + 2f, nameRect.width, 24f);
+                Rect bottomTextRect = new Rect(nameRect.x, nameRect.y + 24f, nameRect.width, 20f);
+
+                Text.Anchor = TextAnchor.LowerLeft;
+                GUI.color = usedTextColor;
+                Widgets.Label(topTextRect, projectDef.LabelCap);
+
+                 Text.Anchor = TextAnchor.UpperLeft;
+                Text.Font = GameFont.Tiny;
+
+                Color nodeTagColor = new Color(0.95f, 0.75f, 0.25f);
+                nodeTagColor.a *= animProgress;
+                GUI.color = nodeTagColor;
+
+                if (isFoundation)
+                {
+                    Widgets.Label(bottomTextRect, "Foundation");
+                }
+                else if (isEmergence)
+                {
+                    Widgets.Label(bottomTextRect, "Emergence");
+                }
+
+                // Reset font back to normal for the rest of the UI
+                Text.Font = GameFont.Small;
+            }
+            else
+            {
+                // Draw normal single-line name
+                GUI.color = usedTextColor;
+                Text.Anchor = TextAnchor.MiddleLeft;
+                Widgets.Label(nameRect, projectDef.LabelCap);
+            }
+
             //// Draw estimated time if we have global data
             //if (hasGlobalRateData)
             //{
@@ -1313,10 +1341,10 @@ namespace CM_Semi_Random_Research
             //    float remainingWork = projectDef.CostApparent - projectDef.ProgressApparent;
             //    float estimatedDays = remainingWork / globalAverageRate;
             //    string etaText = ResearchRateTracker.FormatETA(estimatedDays);
-                
+
             //    // Set color based on estimated days (similar to the stats section)
             //    Color etaColor = new Color(0.7f, 0.7f, 0.7f, usedTextColor.a); // Default gray
-                
+
             //    if (estimatedDays >= 0)
             //    {
             //        if (estimatedDays < 1f)
@@ -1326,30 +1354,30 @@ namespace CM_Semi_Random_Research
             //        else if (estimatedDays > 10f)
             //            etaColor = new Color(0.75f, 0.5f, 0.3f, usedTextColor.a); // Desaturated orange
             //    }
-                
+
             //    // Draw ETA with appropriate color
             //    GUI.color = etaColor;
-                
+
             //    // Add explicit centering calculation
             //    float textWidth = Text.CalcSize(etaText).x;
             //    float centerX = etaRect.x + (etaRect.width - textWidth) / 2;
             //    Rect centeredEtaRect = new Rect(centerX, etaRect.y, textWidth, etaRect.height);
-                
+
             //    Widgets.Label(centeredEtaRect, etaText);
             //    }
             //    else
             //    {
             //    // No rate data available, show "N/A days" with explicit centering
             //    GUI.color = new Color(0.5f, 0.5f, 0.5f, usedTextColor.a); // Muted gray
-                
+
             //    string naText = "N/A days";
             //    float textWidth = Text.CalcSize(naText).x;
             //    float centerX = etaRect.x + (etaRect.width - textWidth) / 2;
             //    Rect centeredNaRect = new Rect(centerX, etaRect.y, textWidth, etaRect.height);
-                
+
             //    Widgets.Label(centeredNaRect, naText);
             //}
-            
+
             // Reset color
             GUI.color = originalColor;
             
@@ -1371,19 +1399,21 @@ namespace CM_Semi_Random_Research
             }
 
             // Draw highlight boxes if needed
-            if(isActive) 
+            if (isActive)
             {
-                Color activeColor = TexUI.ActiveResearchColor;
+                // Use a brightened version of the tech color instead of vanilla brown
+                Color activeColor = Color.Lerp(techColor, Color.white, 0.5f);
                 activeColor.a *= animProgress;
                 DrawTransparentBox(drawRect, activeColor, 10, true);
             }
-            else if(selectedProject == projectDef)
+            else if (selectedProject == projectDef)
             {
-                Color highlightColor = TexUI.HighlightBorderResearchColor;
+                // Use a slightly less brightened version for just selecting
+                Color highlightColor = Color.Lerp(techColor, Color.white, 0.3f);
                 highlightColor.a *= animProgress;
                 DrawTransparentBox(drawRect, highlightColor, 10, true);
             }
-            
+
             // Draw tooltip if hovering
             if (isMouseOver)
             {
@@ -1471,15 +1501,16 @@ namespace CM_Semi_Random_Research
                              new Vector2(rect.x, rect.yMax + 2*borderThickness), borderColor, borderThickness);
             Widgets.DrawLine(new Vector2(rect.xMax, rect.y + borderThickness),
                              new Vector2(rect.xMax, rect.yMax + 2*borderThickness), borderColor, borderThickness);
-            
-            if(cutOutside)
+
+            if (cutOutside)
             {
-                //Horizontal lines
-                Widgets.DrawBoxSolid(new Rect(rect.x - borderThickness, rect.y - borderThickness, rect.width + borderThickness, borderThickness), Widgets.WindowBGFillColor);
-                Widgets.DrawBoxSolid(new Rect(rect.x - borderThickness, rect.yMax, rect.width + borderThickness, borderThickness), Widgets.WindowBGFillColor);
-                //Vertical lines
-                Widgets.DrawBoxSolid(new Rect(rect.x - borderThickness, rect.y - borderThickness, borderThickness, rect.height + borderThickness), Widgets.WindowBGFillColor);
-                Widgets.DrawBoxSolid(new Rect(rect.xMax, rect.y - borderThickness, borderThickness, rect.height + borderThickness), Widgets.WindowBGFillColor);
+                // Horizontal lines (Extending the top and bottom boxes further right)
+                Widgets.DrawBoxSolid(new Rect(rect.x - borderThickness, rect.y - borderThickness, rect.width + (borderThickness * 2), borderThickness), Widgets.WindowBGFillColor);
+                Widgets.DrawBoxSolid(new Rect(rect.x - borderThickness, rect.yMax, rect.width + (borderThickness * 2), borderThickness), Widgets.WindowBGFillColor);
+
+                // Vertical lines (Extending the left and right boxes further down)
+                Widgets.DrawBoxSolid(new Rect(rect.x - borderThickness, rect.y - borderThickness, borderThickness, rect.height + (borderThickness * 2)), Widgets.WindowBGFillColor);
+                Widgets.DrawBoxSolid(new Rect(rect.xMax, rect.y - borderThickness, borderThickness, rect.height + (borderThickness * 2)), Widgets.WindowBGFillColor);
             }
             GUI.color = saveColor;
 
@@ -2147,146 +2178,153 @@ namespace CM_Semi_Random_Research
         }
 
         // Add this method to draw the research rate graph and ETA information
-        private void DrawResearchRateUI(Rect rect, ResearchProjectDef project)
+        private void DrawResearchRateUI(Rect rect, ResearchProjectDef project, bool isExpanded)
         {
             if (project == null) return;
-            
+
             Color originalColor = GUI.color;
             TextAnchor originalAnchor = Text.Anchor;
-            
-            // Get the research rate tracker
+
             ResearchRateTracker rateTracker = Current.Game.World.GetComponent<ResearchRateTracker>();
             if (rateTracker == null) return;
-            
-            // Get rate information for this project
+
             ResearchRateInfo rateInfo = rateTracker.GetResearchRateInfo(project);
-            
-            // Check if we have enough data yet
             bool hasRateData = rateInfo.TotalSamples > 0;
-            
-            // Even if this specific project doesn't have data, we may have global data
-            // Get global research rate info to ensure we always have an average
             float globalAverageRate = rateTracker.GetGlobalAverageRate();
             bool hasGlobalData = globalAverageRate > 0;
-            
-            // Calculate dimensions with increased spacing
-            // float padding = 4f;
-           // float lineHeight = 20f;
+
             float graphPadding = 6f;
-            float sectionSpacing = 16f;  // Increased from 8f for more vertical space
-            
-            // Set up initial position
+            float sectionSpacing = 16f;
             float currentY = rect.y;
-            
-            // Draw the tech entry in the same style as the research buttons
+
             Text.Font = GameFont.Small;
             float headerHeight = 48f;
             Rect headerRect = new Rect(rect.x, currentY, rect.width, headerHeight);
-            
+
             float iconSize = 32.0f;
             float innerMargin = 4f;
             float nameLeftPadding = 12f;
             float separatorWidth = 1f;
             float costValueWidth = Text.CalcSize(project.CostApparent.ToString()).x + innerMargin * 2;
-            
-            // Create rects for single line layout
+
             Rect iconRect = new Rect(headerRect.x + innerMargin, headerRect.y + (headerHeight - iconSize) / 2, iconSize, iconSize);
-            
-            // First separator position (after icon)
+
             Rect firstSeparator = new Rect(
                 iconRect.xMax + innerMargin * 2,
                 headerRect.y,
-                separatorWidth, 
+                separatorWidth,
                 headerHeight
             );
-            
-            // Second separator position - calculate with fixed percentage approach
+
             float nameFieldPortion = 0.75f;
             float availableWidthAfterIcon = headerRect.width - (firstSeparator.xMax + nameLeftPadding);
             Rect secondSeparator = new Rect(
                 firstSeparator.xMax + nameLeftPadding + (availableWidthAfterIcon * nameFieldPortion),
                 headerRect.y,
-                separatorWidth, 
+                separatorWidth,
                 headerHeight
             );
-            
-            // Name rect
+
             Rect nameRect = new Rect(
-                firstSeparator.xMax + nameLeftPadding, 
-                headerRect.y, 
+                firstSeparator.xMax + nameLeftPadding,
+                headerRect.y,
                 secondSeparator.x - (firstSeparator.xMax + nameLeftPadding),
                 headerHeight
             );
-            
-            // Cost rect
+
             Rect costRect = new Rect(
                 secondSeparator.xMax + innerMargin,
-                headerRect.y, 
+                headerRect.y,
                 costValueWidth,
                 headerHeight
             );
-            
-            // Background and progress indicator
+
             Color techColor = GetTechLevelColor(project.techLevel);
+
+            // Apply category specific colors to active cards too!
+            if (project.knowledgeCategory != null)
+            {
+                if (project.knowledgeCategory == KnowledgeCategoryDefOf.Basic) techColor = new Color(0.65f, 0.35f, 0.5f);
+                else if (project.knowledgeCategory == KnowledgeCategoryDefOf.Advanced) techColor = new Color(0.45f, 0.35f, 0.5f);
+            }
+            else if (ResearchTracker.GetCategoryKey(project) == "Gravship")
+            {
+                techColor = new Color(0.2f, 0.6f, 0.8f);
+            }
+
             Color backgroundColor = Color.Lerp(TexUI.AvailResearchColor, techColor, 0.3f);
-            
-            // Draw background
             Widgets.DrawBoxSolid(headerRect, backgroundColor);
-            
-            // Draw progress overlay using the tech color with transparency
+
             Rect progressRect = new Rect(headerRect.x, headerRect.y, headerRect.width * project.ProgressPercent, headerRect.height);
             Color progressColor = techColor;
-            progressColor.a = 0.4f; // Add transparency to make it visible but not overwhelming
+            progressColor.a = 0.4f;
             Widgets.DrawBoxSolid(progressRect, progressColor);
-            
-            // Draw borders
-            Color borderColor = techColor;
+
+            Color borderColor = Color.Lerp(techColor, Color.white, 0.5f); // Brighter border for active projects
             float borderWidth = 1f;
             Widgets.DrawLine(new Vector2(headerRect.x, headerRect.y), new Vector2(headerRect.xMax, headerRect.y), borderColor, borderWidth);
             Widgets.DrawLine(new Vector2(headerRect.x, headerRect.yMax), new Vector2(headerRect.xMax, headerRect.yMax), borderColor, borderWidth);
             Widgets.DrawLine(new Vector2(headerRect.x, headerRect.y), new Vector2(headerRect.x, headerRect.yMax), borderColor, borderWidth);
             Widgets.DrawLine(new Vector2(headerRect.xMax, headerRect.y), new Vector2(headerRect.xMax, headerRect.yMax), borderColor, borderWidth);
-            
-            // Draw icon
+
+            // Custom Active glow
+            DrawTransparentBox(headerRect, borderColor, 10, true);
+
             Def firstUnlockable = GetFirstUnlockable(project);
-            try {
+            try
+            {
                 if (firstUnlockable != null)
                     Widgets.DefIcon(iconRect, firstUnlockable);
-            } catch(Exception) {
-                // Silently catch any icon rendering errors
             }
-            
-            // Draw separators with tech color
-            Widgets.DrawLine(
-                new Vector2(firstSeparator.x, firstSeparator.y), 
-                new Vector2(firstSeparator.x, firstSeparator.yMax), 
-                borderColor, 
-                separatorWidth
-            );
-            
-            Widgets.DrawLine(
-                new Vector2(secondSeparator.x, secondSeparator.y), 
-                new Vector2(secondSeparator.x, secondSeparator.yMax), 
-                borderColor, 
-                separatorWidth
-            );
-            
-            // Draw name
+            catch (Exception) { }
+
+            Widgets.DrawLine(new Vector2(firstSeparator.x, firstSeparator.y), new Vector2(firstSeparator.x, firstSeparator.yMax), borderColor, separatorWidth);
+            Widgets.DrawLine(new Vector2(secondSeparator.x, secondSeparator.y), new Vector2(secondSeparator.x, secondSeparator.yMax), borderColor, separatorWidth);
+
             Text.Anchor = TextAnchor.MiddleLeft;
             GUI.color = Color.white;
             Widgets.Label(nameRect, project.LabelCap);
 
-            // Progress indicator - simplified format with properly centered text
             Text.Anchor = TextAnchor.MiddleCenter;
             GUI.color = new Color(1f, 1f, 1f, 0.8f);
             string progressText = $"{project.ProgressApparent:F0}/{project.CostApparent:F0}";
             float progressTextWidth = Text.CalcSize(progressText).x + 16f;
 
-            // Center within the entire right portion of the header, not just the cost rect
             float availableRightSideWidth = headerRect.width - secondSeparator.x;
             float progressCenterX = secondSeparator.x + (availableRightSideWidth - progressTextWidth) / 2;
             Rect centeredProgressRect = new Rect(progressCenterX, costRect.y, progressTextWidth, costRect.height);
             Widgets.Label(centeredProgressRect, progressText);
+
+            // Cancel Button embedded into the card
+            if (SemiRandomResearchMod.settings.allowSwitchingResearch)
+            {
+                float cancelButtonSize = 20f;
+                Rect cancelRect = new Rect(headerRect.xMax - cancelButtonSize - 4f, headerRect.y + 4f, cancelButtonSize, cancelButtonSize);
+
+                if (Mouse.IsOver(headerRect) || Mouse.IsOver(cancelRect))
+                {
+                    GUI.color = new Color(0.9f, 0.3f, 0.3f, 0.8f);
+                    Widgets.DrawBoxSolid(cancelRect, GUI.color);
+                    GUI.color = Color.white;
+                    Text.Anchor = TextAnchor.MiddleCenter;
+                    Text.Font = GameFont.Small;
+                    Widgets.Label(cancelRect, "×");
+                    Text.Anchor = TextAnchor.UpperLeft;
+
+                    if (Widgets.ButtonInvisible(cancelRect))
+                    {
+                        SoundDefOf.Click.PlayOneShotOnCamera();
+                        ResearchTracker tracker = Current.Game.World.GetComponent<ResearchTracker>();
+                        if (tracker != null)
+                        {
+                            tracker.SetCurrentProject(null, project.knowledgeCategory);
+                            tracker.ForceAutoReseachCheckNextTick();
+                            Event.current.Use();
+                            return; // Stop drawing to prevent null references
+                        }
+                    }
+                }
+            }
 
             if (Widgets.ButtonInvisible(headerRect))
             {
@@ -2294,167 +2332,113 @@ namespace CM_Semi_Random_Research
                 selectedProject = project;
             }
 
-            // Remove the standalone cost display entirely
-            // Text.Anchor = TextAnchor.MiddleRight;
-            // Widgets.Label(costRect, project.CostApparent.ToString());
-
-            // Redesigned stats row - all on a single line with more vertical space
-            currentY += headerHeight + sectionSpacing; // More space after progress bar
-
-            // Increase the line height for more vertical space
-            float statsLineHeight = 38f; // Increased even more for better spacing
-
-            // Single stats row with all information
-            Rect statsRowRect = new Rect(rect.x, currentY, rect.width, statsLineHeight);
-
-            // Draw a subtle background for the stats row
-            Widgets.DrawBoxSolid(statsRowRect, new Color(0.1f, 0.1f, 0.1f, 0.2f));
-
-            // Divide the row into three equal sections - use direct calculation, no padding contractions
-            float sectionWidth = statsRowRect.width / 3;
-
-            // Current Rate (First third)
-            Text.Font = GameFont.Small;
-            Text.Anchor = TextAnchor.MiddleCenter;
-
-            // Section 1: Current Rate with explicit centering
-            Rect currentRateRect = new Rect(statsRowRect.x, statsRowRect.y, sectionWidth, statsLineHeight);
-            GUI.color = new Color(1f, 1f, 1f, 0.8f);
-
-            // Header: "Current"
-            Text.Anchor = TextAnchor.MiddleCenter;
-            Widgets.Label(new Rect(currentRateRect.x, currentRateRect.y, currentRateRect.width, statsLineHeight/2), "Current");
-
-            // Value with explicit centering
-            GUI.color = new Color(0.65f, 0.8f, 0.9f); // Desaturated blue
-            string currentRateText = hasRateData ? rateInfo.CurrentRateFormatted.Replace(" research/day", "/d") : "Calculating...";
-            float currentTextWidth = Text.CalcSize(currentRateText).x + 8f;
-            float currentCenterX = currentRateRect.x + (currentRateRect.width - currentTextWidth) / 2;
-            Rect centeredCurrentRect = new Rect(currentCenterX, currentRateRect.y + statsLineHeight/2, currentTextWidth, statsLineHeight/2);
-            Widgets.Label(centeredCurrentRect, currentRateText);
-
-            // Section 2: 10-Day Average with explicit centering
-            Rect avgRateRect = new Rect(statsRowRect.x + sectionWidth, statsRowRect.y, sectionWidth, statsLineHeight);
-            GUI.color = new Color(1f, 1f, 1f, 0.8f);
-
-            // Header: "10d Avg"
-            Text.Anchor = TextAnchor.MiddleCenter;
-            Widgets.Label(new Rect(avgRateRect.x, avgRateRect.y, avgRateRect.width, statsLineHeight/2), "10d Avg");
-
-            // Value with explicit centering
-            string averageRateText;
-            if (hasRateData)
+            // ==========================================
+            // ACCORDION EXPANSION LOGIC
+            // ==========================================
+            if (isExpanded)
             {
-                averageRateText = rateInfo.AverageRateFormatted.Replace(" research/day", "/d");
-            }
-            else if (hasGlobalData)
-            {
-                averageRateText = ResearchRateTracker.FormatRate(globalAverageRate).Replace(" research/day", "/d");
-            }
-            else
-            {
-                averageRateText = "0/d";
-            }
+                currentY += headerHeight + sectionSpacing;
 
-            GUI.color = new Color(0.8f, 0.8f, 0.6f); // Desaturated gold
-            float avgTextWidth = Text.CalcSize(averageRateText).x + 8f;
-            float avgCenterX = avgRateRect.x + (avgRateRect.width - avgTextWidth) / 2;
-            Rect centeredAvgRect = new Rect(avgCenterX, avgRateRect.y + statsLineHeight/2, avgTextWidth, statsLineHeight/2);
-            Widgets.Label(centeredAvgRect, averageRateText);
+                float statsLineHeight = 38f;
+                Rect statsRowRect = new Rect(rect.x, currentY, rect.width, statsLineHeight);
+                Widgets.DrawBoxSolid(statsRowRect, new Color(0.1f, 0.1f, 0.1f, 0.2f));
 
-            // Section 3: ETA with explicit centering
-            Rect etaRect = new Rect(statsRowRect.x + sectionWidth * 2, statsRowRect.y, sectionWidth, statsLineHeight);
-            GUI.color = new Color(1f, 1f, 1f, 0.8f);
+                float sectionWidth = statsRowRect.width / 3;
 
-            // Header: "Est. Time"
-            Text.Anchor = TextAnchor.MiddleCenter;
-            Widgets.Label(new Rect(etaRect.x, etaRect.y, etaRect.width, statsLineHeight/2), "Est. Time");
+                Text.Font = GameFont.Small;
+                Text.Anchor = TextAnchor.MiddleCenter;
 
-            // Calculate ETA using global average if needed
-            string etaText;
-            float estimatedDays = -1f;
+                Rect currentRateRect = new Rect(statsRowRect.x, statsRowRect.y, sectionWidth, statsLineHeight);
+                GUI.color = new Color(1f, 1f, 1f, 0.8f);
+                Widgets.Label(new Rect(currentRateRect.x, currentRateRect.y, currentRateRect.width, statsLineHeight / 2), "Current");
+                GUI.color = new Color(0.65f, 0.8f, 0.9f);
+                string currentRateText = hasRateData ? rateInfo.CurrentRateFormatted.Replace(" research/day", "/d") : "Calculating...";
+                float currentTextWidth = Text.CalcSize(currentRateText).x + 8f;
+                float currentCenterX = currentRateRect.x + (currentRateRect.width - currentTextWidth) / 2;
+                Rect centeredCurrentRect = new Rect(currentCenterX, currentRateRect.y + statsLineHeight / 2, currentTextWidth, statsLineHeight / 2);
+                Widgets.Label(centeredCurrentRect, currentRateText);
 
-            if (hasRateData && rateInfo.EstimatedDaysToCompletion >= 0)
-            {
-                etaText = rateInfo.ETAFormatted;
-                estimatedDays = rateInfo.EstimatedDaysToCompletion;
-            }
-            else if (hasGlobalData)
-            {
-                // Calculate ETA with global average
-                float remainingProgress = project.CostApparent - project.ProgressApparent;
-                estimatedDays = remainingProgress / globalAverageRate;
-                etaText = ResearchRateTracker.FormatETA(estimatedDays);
-            }
-            else
-            {
-                etaText = "Unknown";
-            }
+                Rect avgRateRect = new Rect(statsRowRect.x + sectionWidth, statsRowRect.y, sectionWidth, statsLineHeight);
+                GUI.color = new Color(1f, 1f, 1f, 0.8f);
+                Widgets.Label(new Rect(avgRateRect.x, avgRateRect.y, avgRateRect.width, statsLineHeight / 2), "10d Avg");
+                string averageRateText;
+                if (hasRateData) averageRateText = rateInfo.AverageRateFormatted.Replace(" research/day", "/d");
+                else if (hasGlobalData) averageRateText = ResearchRateTracker.FormatRate(globalAverageRate).Replace(" research/day", "/d");
+                else averageRateText = "0/d";
 
-            // Set color based on estimated days
-            Color etaColor = new Color(0.7f, 0.7f, 0.7f); // Default gray
-            if (estimatedDays >= 0)
-            {
-                if (estimatedDays < 1f)
-                    etaColor = new Color(0.0f, 0.7f, 0.0f); // Desaturated green
-                else if (estimatedDays < 3f)
-                    etaColor = new Color(0.7f, 0.7f, 0.0f); // Desaturated yellow
-                else if (estimatedDays > 10f)
-                    etaColor = new Color(0.75f, 0.5f, 0.3f); // Desaturated orange
-            }
+                GUI.color = new Color(0.8f, 0.8f, 0.6f);
+                float avgTextWidth = Text.CalcSize(averageRateText).x + 8f;
+                float avgCenterX = avgRateRect.x + (avgRateRect.width - avgTextWidth) / 2;
+                Rect centeredAvgRect = new Rect(avgCenterX, avgRateRect.y + statsLineHeight / 2, avgTextWidth, statsLineHeight / 2);
+                Widgets.Label(centeredAvgRect, averageRateText);
 
-            GUI.color = etaColor;
-            float etaTextWidth = Text.CalcSize(etaText).x + 8f;
-            float etaCenterX = etaRect.x + (etaRect.width - etaTextWidth) / 2;
-            Rect centeredEtaRect = new Rect(etaCenterX, etaRect.y + statsLineHeight/2, etaTextWidth, statsLineHeight/2);
-            Widgets.Label(centeredEtaRect, etaText);
+                Rect etaRect = new Rect(statsRowRect.x + sectionWidth * 2, statsRowRect.y, sectionWidth, statsLineHeight);
+                GUI.color = new Color(1f, 1f, 1f, 0.8f);
+                Widgets.Label(new Rect(etaRect.x, etaRect.y, etaRect.width, statsLineHeight / 2), "Est. Time");
 
-            // Extra spacing before graph
-            currentY += statsLineHeight + sectionSpacing;  // More space before graph
-            
-            // Draw the research rate graph with slightly reduced height and more desaturated colors
-            if (hasRateData || hasGlobalData)
-            {
-                // Make the graph tall but 20% less than before
-                float graphHeight = 140f; // Much shorter graph
-                
-                // If needed, expand the containing rect to accommodate the taller graph
-                if (rect.yMax < currentY + graphHeight + 10f)
+                string etaText;
+                float estimatedDays = -1f;
+                if (hasRateData && rateInfo.EstimatedDaysToCompletion >= 0)
                 {
-                    float additionalHeightNeeded = (currentY + graphHeight + 10f) - rect.yMax;
-                    rect.height += additionalHeightNeeded;
+                    etaText = rateInfo.ETAFormatted;
+                    estimatedDays = rateInfo.EstimatedDaysToCompletion;
                 }
-                
-                Rect graphRect = new Rect(
-                    rect.x + graphPadding, 
-                    currentY, 
-                    rect.width - (graphPadding * 2), 
-                    graphHeight
-                );
-                
-                // Draw a very subtle background for the graph
-                Widgets.DrawBoxSolid(graphRect, new Color(0.1f, 0.1f, 0.1f, 0.2f));
-                DrawTransparentBox(graphRect, new Color(0.4f, 0.4f, 0.4f, 0.3f), 1f);
-                
-                // Pass actual data or global data
-                List<float> samplesForGraph = hasRateData ? 
-                    rateTracker.GetRateSamplesPeriod(project, 3) : 
-                    rateTracker.GetGlobalRateSamplesPeriod(3);
-                    
-                if (samplesForGraph.Count > 0)
+                else if (hasGlobalData)
                 {
-                    DrawRateGraph(graphRect, samplesForGraph, rateTracker.GetAverageRate(project));
+                    float remainingProgress = project.CostApparent - project.ProgressApparent;
+                    estimatedDays = remainingProgress / globalAverageRate;
+                    etaText = ResearchRateTracker.FormatETA(estimatedDays);
                 }
-                else
+                else etaText = "Unknown";
+
+                Color etaColor = new Color(0.7f, 0.7f, 0.7f);
+                if (estimatedDays >= 0)
                 {
-                    // Draw "No Data" text in the middle if we don't have samples
-                    Text.Anchor = TextAnchor.MiddleCenter;
-                    GUI.color = new Color(0.6f, 0.6f, 0.6f, 0.6f);
-                    Widgets.Label(graphRect, "Collecting Data...");
+                    if (estimatedDays < 1f) etaColor = new Color(0.0f, 0.7f, 0.0f);
+                    else if (estimatedDays < 3f) etaColor = new Color(0.7f, 0.7f, 0.0f);
+                    else if (estimatedDays > 10f) etaColor = new Color(0.75f, 0.5f, 0.3f);
+                }
+
+                GUI.color = etaColor;
+                float etaTextWidth = Text.CalcSize(etaText).x + 8f;
+                float etaCenterX = etaRect.x + (etaRect.width - etaTextWidth) / 2;
+                Rect centeredEtaRect = new Rect(etaCenterX, etaRect.y + statsLineHeight / 2, etaTextWidth, statsLineHeight / 2);
+                Widgets.Label(centeredEtaRect, etaText);
+
+                currentY += statsLineHeight + sectionSpacing;
+
+                if (SemiRandomResearchMod.settings.showResearchRateGraph && (hasRateData || hasGlobalData))
+                {
+                    float graphHeight = 140f;
+
+                    if (rect.yMax < currentY + graphHeight + 10f)
+                    {
+                        float additionalHeightNeeded = (currentY + graphHeight + 10f) - rect.yMax;
+                        rect.height += additionalHeightNeeded;
+                    }
+
+                    Rect graphRect = new Rect(rect.x + graphPadding, currentY, rect.width - (graphPadding * 2), graphHeight);
+
+                    Widgets.DrawBoxSolid(graphRect, new Color(0.1f, 0.1f, 0.1f, 0.2f));
+                    DrawTransparentBox(graphRect, new Color(0.4f, 0.4f, 0.4f, 0.3f), 1f);
+
+                    List<float> samplesForGraph = hasRateData ?
+                        rateTracker.GetRateSamplesPeriod(project, 3) :
+                        rateTracker.GetGlobalRateSamplesPeriod(3);
+
+                    if (samplesForGraph.Count > 0)
+                    {
+                        DrawRateGraph(graphRect, samplesForGraph, rateTracker.GetAverageRate(project));
+                    }
+                    else
+                    {
+                        Text.Anchor = TextAnchor.MiddleCenter;
+                        GUI.color = new Color(0.6f, 0.6f, 0.6f, 0.6f);
+                        Widgets.Label(graphRect, "Collecting Data...");
+                    }
                 }
             }
-            
-            // Reset text settings
+
             Text.Anchor = originalAnchor;
             GUI.color = originalColor;
         }

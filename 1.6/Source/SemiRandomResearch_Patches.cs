@@ -30,7 +30,7 @@ namespace CM_Semi_Random_Research
             {
                 if (___allButtonsInOrder != null)
                 {
-                    if (SemiRandomResearchMod.settings.featureEnabled)
+                    if (SemiRandomResearchMod.settings.featureEnabled && !SemiRandomResearchMod.settings.usingNodeResearch)
                         ___allButtonsInOrder = ___allButtonsInOrder.Where(button => button != MainButtonDefOf.Research).ToList();
                     else
                         ___allButtonsInOrder = ___allButtonsInOrder.Where(button => button != SemiRandomResearchDefOf.Semi_Random_Research).ToList();
@@ -55,9 +55,10 @@ namespace CM_Semi_Random_Research
                 if (tab == null)
                     return;
 
-                if (tab == MainButtonDefOf.Research &&
-                   (SemiRandomResearchMod.settings.featureEnabled && DiaOption_Patches.DiaOption_FinishProject.finishingProject))
+                if (tab == MainButtonDefOf.Research && SemiRandomResearchMod.settings.featureEnabled && !SemiRandomResearchMod.settings.usingNodeResearch)
+                {
                     tab = SemiRandomResearchDefOf.Semi_Random_Research;
+                }
             }
         }
     }
@@ -87,6 +88,10 @@ namespace CM_Semi_Random_Research
                 {
                     SoundDefOf.ResearchStart.PlayOneShotOnCamera();
 
+                    SemiRandomResearchMod.settings.usingNodeResearch = false;
+                    LoadedModManager.GetMod<SemiRandomResearchMod>().WriteSettings();
+                    SemiRandomResearchMod.UpdateShowResearchButton();
+
                     MainTabWindow currentWindow = Find.WindowStack.WindowOfType<MainTabWindow>();
                     MainTabWindow newWindow = SemiRandomResearchDefOf.Semi_Random_Research.TabWindow;
 
@@ -108,7 +113,7 @@ namespace CM_Semi_Random_Research
             public static void Prefix(List<string> ___lockedReasons, ResearchTabDef ___curTabInt)
             {
                 ___lockedReasons.Clear();
-                if (SemiRandomResearchMod.settings.featureEnabled)
+                if (SemiRandomResearchMod.settings.featureEnabled && !SemiRandomResearchMod.settings.usingNodeResearch)
                 {
                     ___lockedReasons.Add("Semi Random Research is active.");
                 }
@@ -117,7 +122,7 @@ namespace CM_Semi_Random_Research
             public static bool PrefixSkip(List<string> ___lockedReasons, ResearchTabDef ___curTabInt, ResearchProjectDef ___selectedProject)
             {
                 Prefix(___lockedReasons, ___curTabInt);
-                return ___selectedProject == null || !SemiRandomResearchMod.settings.featureEnabled || !___selectedProject.CanStartNow;
+                return ___selectedProject == null || !SemiRandomResearchMod.settings.featureEnabled || SemiRandomResearchMod.settings.usingNodeResearch || !___selectedProject.CanStartNow;
             }
 
             [HarmonyTranspiler]
@@ -140,7 +145,6 @@ namespace CM_Semi_Random_Research
                         instructionList[i - 1].LoadsField(selectedProjectFieldInfo) &&
                         instructionList[i - 0].Calls(canStartNowMethodInfo))
                     {
-                        Log.Message("[CM_Semi_Random_Research] - patching to conditionally hide normal start research button.");
                         instructionList[i - 0] = new CodeInstruction(OpCodes.Call, replacementCanStartCheck);
                     }
 
@@ -152,7 +156,6 @@ namespace CM_Semi_Random_Research
                             instructionList[i - 0].LoadsConstant("StopResearch"))
                         {
                             instructionList[i - 6].opcode = OpCodes.Nop;
-                            Log.Message("[CM_Semi_Random_Research] - patching to conditionally hide stop research button at instruction.");
                             instructionList[i - 3] = new CodeInstruction(OpCodes.Call, replacementIsCurrentProject);
                         }
                     }
@@ -232,7 +235,7 @@ namespace CM_Semi_Random_Research
             [HarmonyPrefix]
             public static bool Prefix()
             {
-                if (SemiRandomResearchMod.settings.featureEnabled)
+                if (SemiRandomResearchMod.settings.featureEnabled && !SemiRandomResearchMod.settings.usingNodeResearch)
                 {
                     Find.MainTabsRoot.SetCurrentTab(SemiRandomResearchDefOf.Semi_Random_Research);
                     return false;
@@ -253,7 +256,6 @@ namespace CM_Semi_Random_Research
             try
             {
                 var harmony = new Harmony("CM_Semi_Random_Research.Dialog_ResearchComplete_Patches");
-
                 var finishProjectMethod = typeof(ResearchManager).GetMethod("FinishProject",
                     new Type[] { typeof(ResearchProjectDef), typeof(bool), typeof(Pawn), typeof(bool) });
 
@@ -261,12 +263,6 @@ namespace CM_Semi_Random_Research
                 {
                     harmony.Patch(finishProjectMethod,
                         prefix: new HarmonyMethod(typeof(Dialog_ResearchComplete_Patches), nameof(FinishProject_Prefix)));
-
-                    Log.Message("[Semi Random Research] Successfully patched research completion dialog");
-                }
-                else
-                {
-                    Log.Error("[Semi Random Research] Could not find ResearchManager.FinishProject method");
                 }
             }
             catch (Exception ex)
@@ -279,17 +275,15 @@ namespace CM_Semi_Random_Research
         {
             try
             {
-                if (!SemiRandomResearchMod.settings.featureEnabled)
+                // If the mod is off OR Node Research currently has the baton, sleep and let Node/Vanilla handle it!
+                if (!SemiRandomResearchMod.settings.featureEnabled || SemiRandomResearchMod.settings.usingNodeResearch)
                     return;
 
                 doCompletionDialog = false;
                 doCompletionLetter = false;
 
-                if (Verse.GenScene.InEntryScene ||
-                    Current.Game == null ||
-                    Current.Game.World == null ||
-                    Current.Game.World.worldObjects == null ||
-                    LongEventHandler.AnyEventNowOrWaiting)
+                if (Verse.GenScene.InEntryScene || Current.Game == null || Current.Game.World == null ||
+                    Current.Game.World.worldObjects == null || LongEventHandler.AnyEventNowOrWaiting)
                     return;
 
                 var rateTracker = Current.Game.World.GetComponent<ResearchRateTracker>();
@@ -310,21 +304,22 @@ namespace CM_Semi_Random_Research
                     letterText.AppendLine($"Completed by: {researcher.LabelShort}");
                 }
 
-                var letter = LetterMaker.MakeLetter(
-                    $"Research Complete: {proj.LabelCap}",
-                    letterText.ToString(),
-                    LetterDefOf.PositiveEvent,
-                    researcher != null ? new LookTargets(researcher) : null);
+                if (SemiRandomResearchMod.settings.showCompletionLetter)
+                {
+                    var letter = LetterMaker.MakeLetter(
+                        $"Research Complete: {proj.LabelCap}",
+                        letterText.ToString(),
+                        LetterDefOf.PositiveEvent,
+                        researcher != null ? new LookTargets(researcher) : null);
 
-                Find.LetterStack.ReceiveLetter(letter);
+                    Find.LetterStack.ReceiveLetter(letter);
+                }
 
                 LongEventHandler.ExecuteWhenFinished(() =>
                 {
                     try
                     {
-                        if (Find.UIRoot == null || !(Find.UIRoot is UIRoot_Play))
-                            return;
-
+                        if (Find.UIRoot == null || !(Find.UIRoot is UIRoot_Play)) return;
                         Find.TickManager?.Pause();
 
                         MainButtonDef researchButton = SemiRandomResearchDefOf.Semi_Random_Research;
@@ -347,29 +342,82 @@ namespace CM_Semi_Random_Research
     }
 
     // =========================================================================
-    // DIA OPTION PATCHES
+    // NODE RESEARCH INTEGRATION
     // =========================================================================
     [StaticConstructorOnStartup]
-    public static class DiaOption_Patches
+    public static class NodeResearch_Integration
     {
-        [HarmonyPatch(typeof(DiaOption))]
-        [HarmonyPatch("Activate", MethodType.Normal)]
-        public static class DiaOption_FinishProject
+        static NodeResearch_Integration()
         {
-            public static bool finishingProject = false;
-
-            [HarmonyPrefix]
-            public static void Prefix(string ___text)
+            if (ModLister.GetActiveModWithIdentifier("ferny.noderesearch") != null)
             {
-                if (___text == "ResearchScreen".Translate())
-                    finishingProject = true;
+                var harmony = new Harmony("CM_Semi_Random_Research.NodeIntegration");
+                var type = AccessTools.TypeByName("BetterResearchMenu.MainTabWindow_BetterResearch");
+
+                if (type != null)
+                {
+                    var original = AccessTools.Method(type, "DrawGraphControls");
+                    var transpiler = AccessTools.Method(typeof(NodeResearch_Integration), nameof(DrawGraphControls_Transpiler));
+                    var postfix = AccessTools.Method(typeof(NodeResearch_Integration), nameof(DrawGraphControls_Postfix));
+
+                    harmony.Patch(original, transpiler: new HarmonyMethod(transpiler), postfix: new HarmonyMethod(postfix));
+                    Log.Message("[Semi Random Research] Successfully integrated with Node Research UI.");
+                }
+            }
+        }
+
+        public static IEnumerable<CodeInstruction> DrawGraphControls_Transpiler(IEnumerable<CodeInstruction> instructions)
+        {
+            bool foundVanillaTip = false;
+            bool shiftedSettings = false;
+
+            foreach (var instruction in instructions)
+            {
+                yield return instruction;
+
+                if (!foundVanillaTip && instruction.opcode == OpCodes.Ldstr && instruction.operand is string str && str == "BRM_OpenVanillaMenu")
+                {
+                    foundVanillaTip = true;
+                }
+
+                if (foundVanillaTip && !shiftedSettings && instruction.opcode == OpCodes.Add)
+                {
+                    yield return new CodeInstruction(OpCodes.Ldc_R4, 32f);
+                    yield return new CodeInstruction(OpCodes.Add);
+                    shiftedSettings = true;
+                    foundVanillaTip = false;
+                }
+            }
+        }
+
+        public static void DrawGraphControls_Postfix(Rect controlAreaRect, Window __instance)
+        {
+            float btnSize = 24f;
+            float btnGap = 8f;
+            float xOffset = (btnSize + btnGap) * 2;
+
+            Rect semiBtnRect = new Rect(controlAreaRect.x + xOffset, controlAreaRect.y, btnSize, btnSize);
+            Texture2D texSemiRandom = ContentFinder<Texture2D>.Get("UI/semi", true);
+
+            if (Widgets.ButtonImage(semiBtnRect, texSemiRandom))
+            { 
+                SemiRandomResearchMod.settings.usingNodeResearch = false;
+                LoadedModManager.GetMod<SemiRandomResearchMod>().WriteSettings();
+                SemiRandomResearchMod.UpdateShowResearchButton();
+
+                ResearchProjectDef activeProj = Find.ResearchManager.GetProject();
+                ResearchTracker tracker = Current.Game?.World?.GetComponent<ResearchTracker>();
+                if (tracker != null && activeProj != null && !tracker.CurrentProject.Contains(activeProj))
+                {
+                    tracker.SetCurrentProject(activeProj, activeProj.knowledgeCategory);
+                }
+
+                __instance.Close();
+                Find.MainTabsRoot.SetCurrentTab(SemiRandomResearchDefOf.Semi_Random_Research);
+                SoundDefOf.TabOpen.PlayOneShotOnCamera();
             }
 
-            [HarmonyPostfix]
-            public static void Postfix()
-            {
-                finishingProject = false;
-            }
+            TooltipHandler.TipRegion(semiBtnRect, "Open Semi-Random Research");
         }
     }
 }

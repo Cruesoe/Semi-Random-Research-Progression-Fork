@@ -1,0 +1,6 @@
+C:\Users\crues\source\repos\SemiRandomResearchProgressionContinued\bin\Debug\SemiRandomResearchProgressionContinued.dll
+C:\Users\crues\source\repos\SemiRandomResearchProgressionContinued\bin\Debug\SemiRandomResearchProgressionContinued.pdb
+C:\Users\crues\source\repos\SemiRandomResearchProgressionContinued\obj\Debug\SemiRandomResearchProgressionContinued.csproj.AssemblyReference.cache
+C:\Users\crues\source\repos\SemiRandomResearchProgressionContinued\obj\Debug\SemiRandomResearchProgressionContinued.csproj.CoreCompileInputs.cache
+C:\Users\crues\source\repos\SemiRandomResearchProgressionContinued\obj\Debug\SemiRandomResearchProgressionContinued.dll
+C:\Users\crues\source\repos\SemiRandomResearchProgressionContinued\obj\Debug\SemiRandomResearchProgressionContinued.pdb

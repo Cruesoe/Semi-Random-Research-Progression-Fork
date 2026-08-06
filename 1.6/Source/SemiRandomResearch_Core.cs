@@ -27,19 +27,32 @@ namespace CM_Semi_Random_Research
     // =========================================================================
     public static class SemiRandomResearchUtility
     {
-        // This little gumdrop is to make my life easy with a transpiler patch for hiding the normal research button
         public static bool CanSelectNormalResearchNow(ResearchProjectDef rpd)
         {
-            bool anomaly_enabled = Compatibility.IsAnomalyContent(rpd) && !SemiRandomResearchMod.settings.experimentalAnomalySupport;
-            bool enabled = !SemiRandomResearchMod.settings.featureEnabled || anomaly_enabled;
-            return enabled && rpd.CanStartNow;
+            bool hideVanilla = SemiRandomResearchMod.settings.featureEnabled && !SemiRandomResearchMod.settings.usingNodeResearch;
+            return !hideVanilla && rpd.CanStartNow;
         }
 
         public static bool IsCurrentProject(ResearchProjectDef rpd)
         {
-            bool anomaly_enabled = Compatibility.IsAnomalyContent(rpd) && !SemiRandomResearchMod.settings.experimentalAnomalySupport;
-            bool enabled = !SemiRandomResearchMod.settings.featureEnabled || anomaly_enabled;
-            return enabled && Find.ResearchManager.IsCurrentProject(rpd);
+            bool hideVanilla = SemiRandomResearchMod.settings.featureEnabled && !SemiRandomResearchMod.settings.usingNodeResearch;
+            return !hideVanilla && Find.ResearchManager.IsCurrentProject(rpd);
+        }
+
+        public static bool IsNodeFoundationTech(ResearchProjectDef def)
+        {
+            if (def == null || def.modExtensions == null)
+                return false;
+
+            return def.modExtensions.Any(ext => ext.GetType().Name == "ResearchFoundationExtension");
+        }
+
+        public static bool IsNodeEmergenceTech(ResearchProjectDef def)
+        {
+            if (def == null || def.modExtensions == null)
+                return false;
+
+            return def.modExtensions.Any(ext => ext.GetType().Name == "EmergenceExtension");
         }
     }
 
@@ -62,8 +75,7 @@ namespace CM_Semi_Random_Research
         public static bool DoCompatibilityChecks(ResearchProjectDef rpd)
         {
             return SatisfiesAlienRaceRestriction(rpd) &&
-                !rpd.IsDummyResearch() &&
-                (SemiRandomResearchMod.settings.experimentalAnomalySupport || !IsAnomalyContent(rpd));
+                !rpd.IsDummyResearch();
         }
 
         public static bool IsAnomalyContent(ResearchProjectDef rpd)
